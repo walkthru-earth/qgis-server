@@ -34,3 +34,4 @@ junitxml/
 # Local config
 .env.local
 *.local.yaml
+CLAUDE.md

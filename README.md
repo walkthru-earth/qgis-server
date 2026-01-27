@@ -1,14 +1,20 @@
-# QGIS Server Docker - Official Packages
+# QGIS Server Docker - Multi-Architecture
 
-Modern QGIS Server Docker image using official QGIS packages from qgis.org.
+Production-ready QGIS Server Docker image with multi-architecture support.
 
 ## Features
 
-- **Official Packages**: Uses official QGIS LTR packages from qgis.org/ubuntu-ltr
-- **Architecture**: AMD64 (ARM64 not available in official QGIS repos)
+- **Multi-Architecture**: Supports both `linux/amd64` and `linux/arm64`
 - **Multiple Server Modes**: Apache, Lighttpd, or spawn-fcgi
 - **Production Ready**: Healthchecks, non-root user support, read-only filesystem
-- **Latest Stack**: GDAL 3.12.1, Ubuntu Noble, QGIS 3.40.x LTR
+- **Latest Stack**: GDAL 3.12.1, Ubuntu Noble
+
+### Architecture Details
+
+| Architecture | QGIS Version | Build Method |
+|-------------|--------------|--------------|
+| AMD64 | 3.40.x LTR | Official packages from qgis.org |
+| ARM64 | 3.44.7 | Compiled from source |
 
 ## Quick Start
 
