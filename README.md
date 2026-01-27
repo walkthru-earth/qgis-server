@@ -13,8 +13,10 @@ Production-ready QGIS Server Docker image with multi-architecture support.
 
 | Architecture | QGIS Version | Build Method |
 |-------------|--------------|--------------|
-| AMD64 | 3.44.x | Official packages from qgis.org |
-| ARM64 | 3.44.x | Compiled from source |
+| AMD64 | 3.44.7 | Compiled from source |
+| ARM64 | 3.44.7 | Compiled from source |
+
+Both architectures are built natively on Hetzner Cloud servers for fast, consistent builds.
 
 ## Quick Start
 
@@ -148,12 +150,12 @@ make buildx-all
 
 | Argument | Default | Description |
 |----------|---------|-------------|
-| `QGIS_VERSION` | `master` | QGIS branch/tag to build |
+| `QGIS_VERSION` | `final-3_44_7` | QGIS branch/tag to build |
 | `GDAL_VERSION` | `3.12.1` | GDAL base image version |
 
 ```bash
 # Build specific QGIS version
-make build-server QGIS_VERSION=final-3_44_0
+make build-server QGIS_VERSION=final-3_44_7
 ```
 
 ## Architecture

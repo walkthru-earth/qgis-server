@@ -97,13 +97,10 @@ WORKDIR /src
 RUN git clone --depth=1 --branch=${QGIS_VERSION} https://github.com/qgis/QGIS.git .
 
 # Patch for Qt 6.4 compatibility (boundValueNames() requires Qt 6.6+)
-# The function is used in debug logging - replace with empty loop
+# Replace boundValueNames() with empty QStringList - it's only used for debug logging
 RUN echo 'Patching QGIS for Qt 6.4 compatibility...' && \
-    for file in $(find . -name "*.cpp" -exec grep -l "boundValueNames" {} \;); do \
-      echo "Patching: $file"; \
-      # Replace the for loop that iterates over boundValueNames() with empty block
-      sed -i 's/for.*boundValueNames().*{/if (false) {/g' "$file" || true; \
-    done && \
+    sed -i 's/query->boundValueNames()/QStringList()/g' \
+        src/core/auth/qgsauthconfigurationstoragedb.cpp && \
     echo 'Patch complete'
 
 # Configure ccache

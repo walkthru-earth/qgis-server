@@ -40,11 +40,11 @@ This project provides a modern, multi-architecture Docker image for QGIS Server 
 ```mermaid
 graph TB
     subgraph "Versions"
-        QGIS["QGIS 4.x<br/>(Qt6)"]
-        QT["Qt 6.6+"]
+        QGIS["QGIS 3.44.7<br/>(Qt6)"]
+        QT["Qt 6.4"]
         PYTHON["Python 3.12"]
         GDAL["GDAL 3.12.1"]
-        UBUNTU["Ubuntu 24.04+"]
+        UBUNTU["Ubuntu 24.04"]
     end
 
     subgraph "Architectures"
@@ -61,8 +61,8 @@ graph TB
 
 | Component | Version | Notes |
 |-----------|---------|-------|
-| QGIS | 4.x (master) | Built from source with Qt6 |
-| Qt | 6.4+ | Required for QGIS 4.x |
+| QGIS | 3.44.7 | Built from source with Qt6 |
+| Qt | 6.4 | Ubuntu Noble default |
 | Python | 3.12 | With PyQt6 bindings |
 | GDAL | 3.12.1 | Multi-arch base image |
 | Ubuntu | 24.04 (Noble) | From GDAL base |
@@ -123,15 +123,20 @@ flowchart TB
 cmake .. \
     -GNinja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_WITH_QT6=ON \          # Enable Qt6
+    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    -DCMAKE_C_FLAGS="-O2" \
+    -DCMAKE_CXX_FLAGS="-O2" \
+    -DBUILD_WITH_QT6=ON \           # Enable Qt6
     -DWITH_QTWEBKIT=OFF \           # Not available in Qt6
     -DWITH_SERVER=ON \
-    -DWITH_SERVER_LANDINGPAGE_WEBAPP=ON \
+    -DWITH_SERVER_LANDINGPAGE_WEBAPP=OFF \
     -DWITH_DESKTOP=OFF \            # Server only
+    -DWITH_GUI=OFF \
     -DWITH_3D=OFF \
     -DWITH_PDAL=OFF \
-    -DWITH_BINDINGS=ON \            # Python bindings
-    -DBUILD_TESTING=OFF
+    -DWITH_BINDINGS=OFF \           # No Python bindings
+    -DBUILD_TESTING=OFF \
+    -DENABLE_TESTS=OFF
 ```
 
 ---
@@ -140,16 +145,18 @@ cmake .. \
 
 ### How It Works
 
+Both architectures are built natively on Hetzner Cloud self-hosted runners for maximum performance.
+
 ```mermaid
 flowchart LR
-    subgraph "Build Process"
-        BUILDX["docker buildx"]
-        QEMU["QEMU<br/>(ARM64 emulation)"]
+    subgraph "Hetzner Cloud Runners"
+        AMD_RUNNER["ccx33<br/>8 x86 cores, 32GB"]
+        ARM_RUNNER["cax41<br/>16 ARM cores, 32GB"]
     end
 
-    subgraph "Parallel Builds"
-        AMD["AMD64 Build<br/>(native)"]
-        ARM["ARM64 Build<br/>(emulated or native)"]
+    subgraph "Parallel Native Builds"
+        AMD["AMD64 Build<br/>(native x86)"]
+        ARM["ARM64 Build<br/>(native ARM)"]
     end
 
     subgraph "Output"
@@ -161,9 +168,8 @@ flowchart LR
         DOCKER["docker.io"]
     end
 
-    BUILDX --> QEMU
-    QEMU --> ARM
-    BUILDX --> AMD
+    AMD_RUNNER --> AMD
+    ARM_RUNNER --> ARM
     AMD --> MANIFEST
     ARM --> MANIFEST
     MANIFEST --> GHCR
@@ -283,6 +289,8 @@ services:
 
 ### Workflow Overview
 
+The CI/CD pipeline uses Hetzner Cloud ephemeral self-hosted runners for cost-effective, fast builds.
+
 ```mermaid
 flowchart TB
     subgraph "Triggers"
@@ -293,56 +301,77 @@ flowchart TB
         MANUAL["Manual dispatch"]
     end
 
-    subgraph "Setup"
-        QEMU["Setup QEMU<br/>(ARM64 emulation)"]
-        BUILDX["Setup Docker Buildx"]
-        LOGIN["Login to registries<br/>GHCR + Docker Hub"]
+    subgraph "Hetzner Cloud Runners"
+        CREATE_AMD["Create AMD64 Runner<br/>ccx33 (8 cores)"]
+        CREATE_ARM["Create ARM64 Runner<br/>cax41 (16 cores)"]
     end
 
-    subgraph "Build Matrix"
-        SERVER["Build: server<br/>platforms: amd64, arm64"]
-        DEBUG["Build: server-debug<br/>platforms: amd64, arm64"]
+    subgraph "Parallel Native Builds"
+        BUILD_AMD["Build AMD64<br/>(native x86)"]
+        BUILD_ARM["Build ARM64<br/>(native ARM)"]
     end
 
-    subgraph "Cache"
-        GHA["GitHub Actions Cache<br/>type=gha"]
+    subgraph "Cleanup"
+        DELETE_AMD["Delete AMD64 Runner"]
+        DELETE_ARM["Delete ARM64 Runner"]
     end
 
     subgraph "Output"
+        MANIFEST["Create Multi-arch Manifest"]
         GHCR["ghcr.io/walkthru-earth/qgis-server"]
         DOCKER["docker.io/walkthruearth/qgis-server"]
     end
 
     subgraph "Test"
-        TEST["Test Images<br/>WMS/WFS capabilities<br/>Python imports"]
+        TEST["Test Images<br/>WMS capabilities"]
     end
 
-    PUSH & TAG & PR & SCHEDULE & MANUAL --> QEMU
-    QEMU --> BUILDX --> LOGIN
-    LOGIN --> SERVER & DEBUG
-    GHA <--> SERVER & DEBUG
-    SERVER & DEBUG --> GHCR & DOCKER
-    GHCR & DOCKER --> TEST
+    PUSH & TAG & PR & SCHEDULE & MANUAL --> CREATE_AMD & CREATE_ARM
+    CREATE_AMD --> BUILD_AMD --> DELETE_AMD
+    CREATE_ARM --> BUILD_ARM --> DELETE_ARM
+    BUILD_AMD & BUILD_ARM --> MANIFEST
+    MANIFEST --> GHCR & DOCKER --> TEST
 ```
+
+### Hetzner Cloud Runner Costs
+
+| Runner | Server Type | Specs | Cost/Hour |
+|--------|-------------|-------|-----------|
+| AMD64 | ccx33 | 8 dedicated x86 cores, 32GB RAM | ~$0.017 |
+| ARM64 | cax41 | 16 ARM cores (Ampere), 32GB RAM | ~$0.044 |
+
+Servers are automatically created before builds and deleted after completion (even on failure).
 
 ### Tag Strategy
 
 | Trigger | Tags Generated |
 |---------|----------------|
-| Push to `main` | `latest`, `latest-debug` |
-| Tag `v1.2.3` | `1.2.3`, `1.2`, `1.2.3-debug`, `1.2-debug` |
-| PR #42 | `pr-42`, `pr-42-debug` (not pushed) |
+| Push to `main`/`master` | `latest` (multi-arch manifest) |
+| Tag `v1.2.3` | `v1.2.3` (multi-arch manifest) |
+| PR | Build only (not pushed) |
+
+Intermediate architecture-specific tags (`build-amd64`, `build-arm64`) are used during the build process and can be cleaned up manually.
 
 ### Caching
 
 The pipeline uses GitHub Actions cache for Docker layers:
 
 ```yaml
-cache-from: type=gha,scope=server
-cache-to: type=gha,mode=max,scope=server
+cache-from: type=gha,scope=server-amd64
+cache-to: type=gha,mode=max,scope=server-amd64
 ```
 
-Separate cache scopes per target prevent cache pollution.
+Separate cache scopes per architecture prevent cache pollution.
+
+### Required Secrets
+
+| Secret | Description |
+|--------|-------------|
+| `PERSONAL_ACCESS_TOKEN` | GitHub PAT with "Administration" read/write access |
+| `HCLOUD_TOKEN` | Hetzner Cloud API token with read/write permissions |
+| `DOCKERHUB_TOKEN` | Docker Hub access token (optional) |
+
+Set secrets via: GitHub → Repository → Settings → Secrets and variables → Actions
 
 ---
 
@@ -447,20 +476,22 @@ qgis-server/
 
 ## Performance Considerations
 
-### Build Time
+### Build Time (Hetzner Cloud Native Runners)
 
-| Architecture | Build Method | Approximate Time |
-|--------------|--------------|------------------|
-| AMD64 | Native | ~45 min |
-| ARM64 | Native | ~45 min |
-| ARM64 | QEMU emulation | ~3-4 hours |
+| Architecture | Server | Build Time |
+|--------------|--------|------------|
+| AMD64 | ccx33 (8 cores) | ~30-45 min |
+| ARM64 | cax41 (16 cores) | ~45-60 min |
+
+Both builds run in parallel, so total pipeline time equals the slower build.
 
 ### Optimization Tips
 
-1. **Use ccache**: Mounted as BuildKit cache for incremental builds
-2. **Parallel ninja**: Uses all available cores (`ninja -j$(nproc)`)
-3. **GHA Cache**: Preserves layers between CI runs
-4. **Separate targets**: Debug builds don't slow down production
+1. **Native ARM builds**: No QEMU emulation - uses Hetzner Ampere Altra servers
+2. **Use ccache**: Mounted as BuildKit cache for incremental builds
+3. **Parallel ninja**: Uses all available cores (`ninja -j$(nproc)`)
+4. **GHA Cache**: Preserves Docker layers between CI runs
+5. **Ephemeral runners**: Fresh environment each build, no state pollution
 
 ### Resource Requirements
 
@@ -468,6 +499,13 @@ qgis-server/
 |-------|-----|------|
 | Build (peak) | 8GB+ | 20GB |
 | Runtime | 512MB+ | 1GB |
+
+### Cost Comparison
+
+| Provider | AMD64/hr | ARM64/hr | Savings |
+|----------|----------|----------|---------|
+| GitHub Actions | $1.32 | $0.84 | - |
+| Hetzner Cloud | $0.017 | $0.044 | ~98% |
 
 ---
 
