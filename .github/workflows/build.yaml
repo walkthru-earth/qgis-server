@@ -33,15 +33,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: server
-            suffix: ''
-          - target: server-debug
-            suffix: '-debug'
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -73,10 +64,10 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
           tags: |
-            type=ref,event=branch,suffix=${{ matrix.suffix }}-amd64
-            type=ref,event=pr,suffix=${{ matrix.suffix }}-amd64
-            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}-amd64
-            type=raw,value=latest,enable={{is_default_branch}},suffix=${{ matrix.suffix }}-amd64
+            type=ref,event=branch,suffix=-amd64
+            type=ref,event=pr,suffix=-amd64
+            type=semver,pattern={{version}},suffix=-amd64
+            type=raw,value=latest-amd64,enable={{is_default_branch}}
           flavor: |
             latest=false
 
@@ -86,12 +77,12 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
-          target: ${{ matrix.target }}
+          target: server
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.target }}-amd64
-          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-amd64
+          cache-from: type=gha,scope=server-amd64
+          cache-to: type=gha,mode=max,scope=server-amd64
           provenance: true
           sbom: true
 
@@ -100,15 +91,6 @@ jobs:
     name: Build ARM64 (From Source)
     runs-on: ubuntu-24.04
     timeout-minutes: 180  # 3 hours for compilation
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: server
-            suffix: ''
-          - target: server-debug
-            suffix: '-debug'
 
     steps:
       - name: Checkout repository
@@ -151,10 +133,10 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
           tags: |
-            type=ref,event=branch,suffix=${{ matrix.suffix }}-arm64
-            type=ref,event=pr,suffix=${{ matrix.suffix }}-arm64
-            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}-arm64
-            type=raw,value=latest,enable={{is_default_branch}},suffix=${{ matrix.suffix }}-arm64
+            type=ref,event=branch,suffix=-arm64
+            type=ref,event=pr,suffix=-arm64
+            type=semver,pattern={{version}},suffix=-arm64
+            type=raw,value=latest-arm64,enable={{is_default_branch}}
           flavor: |
             latest=false
 
@@ -164,12 +146,12 @@ jobs:
           context: .
           file: ./Dockerfile.arm64
           platforms: linux/arm64
-          target: ${{ matrix.target }}
+          target: server
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=${{ matrix.target }}-arm64
-          cache-to: type=gha,mode=max,scope=${{ matrix.target }}-arm64
+          cache-from: type=gha,scope=server-arm64
+          cache-to: type=gha,mode=max,scope=server-arm64
           provenance: true
           sbom: true
 
@@ -179,12 +161,6 @@ jobs:
     needs: [build-amd64, build-arm64]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
-
-    strategy:
-      matrix:
-        include:
-          - suffix: ''
-          - suffix: '-debug'
 
     steps:
       - name: Login to GitHub Container Registry
@@ -213,7 +189,7 @@ jobs:
 
       - name: Create and push GHCR manifest
         run: |
-          TAG="${{ steps.tag.outputs.tag }}${{ matrix.suffix }}"
+          TAG="${{ steps.tag.outputs.tag }}"
           docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${TAG} \
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${TAG}-amd64 \
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${TAG}-arm64
@@ -222,7 +198,7 @@ jobs:
       - name: Create and push Docker Hub manifest
         if: vars.DOCKERHUB_USERNAME != ''
         run: |
-          TAG="${{ steps.tag.outputs.tag }}${{ matrix.suffix }}"
+          TAG="${{ steps.tag.outputs.tag }}"
           docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${TAG} \
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${TAG}-amd64 \
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${TAG}-arm64
@@ -231,20 +207,18 @@ jobs:
       - name: Create latest manifest (GHCR)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: |
-          SUFFIX="${{ matrix.suffix }}"
-          docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest${SUFFIX} \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}${SUFFIX}-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}${SUFFIX}-arm64
-          docker manifest push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest${SUFFIX}
+          docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}-arm64
+          docker manifest push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest
 
       - name: Create latest manifest (Docker Hub)
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && vars.DOCKERHUB_USERNAME != ''
         run: |
-          SUFFIX="${{ matrix.suffix }}"
-          docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest${SUFFIX} \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${{ github.ref_name }}${SUFFIX}-amd64 \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${{ github.ref_name }}${SUFFIX}-arm64
-          docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest${SUFFIX}
+          docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest \
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${{ github.ref_name }}-amd64 \
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${{ github.ref_name }}-arm64
+          docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest
 
   # Test images after manifest creation
   test:
