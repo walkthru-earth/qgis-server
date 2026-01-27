@@ -13,8 +13,8 @@ Production-ready QGIS Server Docker image with multi-architecture support.
 
 | Architecture | QGIS Version | Build Method |
 |-------------|--------------|--------------|
-| AMD64 | 3.40.x LTR | Official packages from qgis.org |
-| ARM64 | 3.44.7 | Compiled from source |
+| AMD64 | 3.44.x | Official packages from qgis.org |
+| ARM64 | 3.44.x | Compiled from source |
 
 ## Quick Start
 

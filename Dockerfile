@@ -1,22 +1,23 @@
 # syntax=docker/dockerfile:1.7
-# QGIS Server Docker Image - Using Official Packages
+# QGIS Server Docker Image - Compiled from Source
 # Maintainer: Walkthru Earth
 # Repository: ghcr.io/walkthru-earth/qgis-server
+# Supports: linux/amd64, linux/arm64
 
 # =============================================================================
 # Build Arguments
 # =============================================================================
 ARG GDAL_VERSION=3.12.1
-ARG UBUNTU_VERSION=noble
+ARG QGIS_VERSION=final-3_44_7
 
 # =============================================================================
-# Stage 1: Base Image with GDAL (Multi-arch: amd64 + arm64)
+# Stage 1: Base Image with GDAL
 # =============================================================================
 FROM ghcr.io/osgeo/gdal:ubuntu-small-${GDAL_VERSION} AS base
 
-LABEL org.opencontainers.image.authors="Walkthru Earth <info@walkthru.earth>"
+LABEL org.opencontainers.image.authors="Walkthru Earth <hi@walkthru.earth>"
 LABEL org.opencontainers.image.source="https://github.com/walkthru-earth/qgis-server"
-LABEL org.opencontainers.image.description="QGIS Server with official packages - Multi-architecture"
+LABEL org.opencontainers.image.description="QGIS Server - Compiled from source"
 
 SHELL ["/bin/bash", "-o", "pipefail", "-cux"]
 
@@ -35,28 +36,111 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         adduser
 
 # =============================================================================
-# Stage 2: Runtime - Add QGIS Repository and Install
+# Stage 2: Builder - Compile QGIS from source
+# =============================================================================
+FROM base AS builder
+
+ARG QGIS_VERSION
+ARG TARGETARCH
+
+# Install build dependencies
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        # Build tools
+        bison \
+        build-essential \
+        ccache \
+        cmake \
+        flex \
+        git \
+        ninja-build \
+        pkg-config \
+        # Qt6 development libraries
+        qt6-base-dev \
+        qt6-base-private-dev \
+        qt6-tools-dev \
+        qt6-tools-dev-tools \
+        qt6-positioning-dev \
+        qt6-svg-dev \
+        qt6-serialport-dev \
+        qt6-5compat-dev \
+        libqt6opengl6-dev \
+        libqt6sql6-sqlite \
+        libqscintilla2-qt6-dev \
+        qtkeychain-qt6-dev \
+        # QGIS dependencies
+        libdraco-dev \
+        libexiv2-dev \
+        libexpat1-dev \
+        libfcgi-dev \
+        libgeos-dev \
+        libgsl-dev \
+        libpq-dev \
+        libprotobuf-dev \
+        libqca-qt6-dev \
+        libqca-qt6-plugins \
+        libspatialindex-dev \
+        libspatialite-dev \
+        libsqlite3-dev \
+        libsqlite3-mod-spatialite \
+        libzip-dev \
+        libzstd-dev \
+        protobuf-compiler
+
+# Remove broken PROJ cmake files from GDAL base image
+RUN rm -rf /usr/local/lib/cmake/proj
+
+# Clone QGIS repository
+WORKDIR /src
+RUN git clone --depth=1 --branch=${QGIS_VERSION} https://github.com/qgis/QGIS.git .
+
+# Patch for Qt 6.4 compatibility (boundValueNames() requires Qt 6.6+)
+# The function is used in debug logging - replace with empty loop
+RUN echo 'Patching QGIS for Qt 6.4 compatibility...' && \
+    for file in $(find . -name "*.cpp" -exec grep -l "boundValueNames" {} \;); do \
+      echo "Patching: $file"; \
+      # Replace the for loop that iterates over boundValueNames() with empty block
+      sed -i 's/for.*boundValueNames().*{/if (false) {/g' "$file" || true; \
+    done && \
+    echo 'Patch complete'
+
+# Configure ccache
+ENV PATH="/usr/lib/ccache:${PATH}"
+ENV CCACHE_DIR=/ccache
+ENV CCACHE_MAXSIZE=2G
+
+# Build QGIS Server
+WORKDIR /src/build
+RUN --mount=type=cache,target=/ccache,id=ccache-${TARGETARCH} \
+    cmake .. \
+        -GNinja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_C_FLAGS="-O2" \
+        -DCMAKE_CXX_FLAGS="-O2" \
+        -DBUILD_WITH_QT6=ON \
+        -DWITH_QTWEBKIT=OFF \
+        -DWITH_SERVER=ON \
+        -DWITH_SERVER_LANDINGPAGE_WEBAPP=OFF \
+        -DWITH_DESKTOP=OFF \
+        -DWITH_GUI=OFF \
+        -DWITH_3D=OFF \
+        -DWITH_PDAL=OFF \
+        -DWITH_BINDINGS=OFF \
+        -DBUILD_TESTING=OFF \
+        -DENABLE_TESTS=OFF && \
+    ninja -j$(nproc) && \
+    ninja install && \
+    rm -rf /usr/local/share/qgis/i18n/
+
+# =============================================================================
+# Stage 3: Runtime
 # =============================================================================
 FROM base AS runtime
 
-ARG TARGETARCH
-
-# Add QGIS official repository with apt preference to prioritize it
-RUN mkdir -m755 -p /etc/apt/keyrings && \
-    wget -O /etc/apt/keyrings/qgis-archive-keyring.gpg \
-        https://download.qgis.org/downloads/qgis-archive-keyring.gpg && \
-    echo "Types: deb deb-src" > /etc/apt/sources.list.d/qgis.sources && \
-    echo "URIs: https://qgis.org/ubuntu-ltr" >> /etc/apt/sources.list.d/qgis.sources && \
-    echo "Suites: noble" >> /etc/apt/sources.list.d/qgis.sources && \
-    echo "Architectures: amd64" >> /etc/apt/sources.list.d/qgis.sources && \
-    echo "Components: main" >> /etc/apt/sources.list.d/qgis.sources && \
-    echo "Signed-By: /etc/apt/keyrings/qgis-archive-keyring.gpg" >> /etc/apt/sources.list.d/qgis.sources && \
-    echo 'Package: *' > /etc/apt/preferences.d/qgis && \
-    echo 'Pin: origin qgis.org' >> /etc/apt/preferences.d/qgis && \
-    echo 'Pin-Priority: 1001' >> /etc/apt/preferences.d/qgis
-
-# Install QGIS Server and dependencies
-# Note: python3-qgis excluded due to version conflicts between repos
+# Install runtime dependencies
 RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && \
@@ -66,8 +150,36 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         libapache2-mod-fcgid \
         lighttpd \
         spawn-fcgi \
-        # QGIS Server (from official repo)
-        qgis-server \
+        # Qt6 runtime
+        libqt6core6t64 \
+        libqt6gui6t64 \
+        libqt6widgets6t64 \
+        libqt6network6t64 \
+        libqt6sql6t64 \
+        libqt6sql6-sqlite \
+        libqt6xml6t64 \
+        libqt6svg6 \
+        libqt6opengl6t64 \
+        libqt6positioning6 \
+        libqt6core5compat6 \
+        libqscintilla2-qt6-15 \
+        libqt6keychain1 \
+        # QGIS runtime dependencies
+        libqca-qt6-2 \
+        libqca-qt6-plugins \
+        libfcgi0ldbl \
+        libgslcblas0 \
+        libspatialindex6 \
+        libspatialite8 \
+        libsqlite3-0 \
+        libsqlite3-mod-spatialite \
+        libzip4 \
+        libzstd1 \
+        libdraco8 \
+        libexiv2-27 \
+        libprotobuf32t64 \
+        libprotobuf-lite32t64 \
+        libgsl27 \
         # Fonts
         xfonts-100dpi \
         xfonts-75dpi \
@@ -80,12 +192,23 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         xauth
 
 # =============================================================================
-# Stage 3: Server - Production QGIS Server
+# Stage 4: Server - Production QGIS Server
 # =============================================================================
 FROM runtime AS server
 
+# Copy compiled QGIS from builder
+COPY --from=builder /usr/local/bin /usr/local/bin/
+COPY --from=builder /usr/local/lib /usr/local/lib/
+COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
+
 # Copy runtime configuration
 COPY runtime/ /
+
+# Update Apache config for compiled QGIS location
+RUN sed -i 's|/usr/lib/cgi-bin/qgis_mapserv.fcgi|/usr/local/bin/qgis_mapserv.fcgi|g' \
+        /etc/apache2/conf-enabled/qgis.conf && \
+    sed -i 's|/usr/lib/cgi-bin/|/usr/local/bin/|g' \
+        /etc/apache2/conf-enabled/qgis.conf
 
 # Allow non-root font installation
 RUN chmod u+s /usr/bin/fc-cache && \
@@ -121,7 +244,7 @@ ENV FCGID_MAX_REQUESTS_PER_PROCESS=1000 \
 ENV QGIS_SERVER_LOG_STDERR=1 \
     QGIS_CUSTOM_CONFIG_PATH=/tmp \
     QGIS_PLUGINPATH=/var/www/plugins \
-    PYTHONPATH=/usr/share/qgis/python/:/var/www/plugins/
+    PYTHONPATH=/usr/local/share/qgis/python/:/var/www/plugins/
 
 # Configure Apache
 RUN a2enmod fcgid headers status && \
@@ -158,7 +281,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 CMD ["/usr/local/bin/start-server"]
 
 # =============================================================================
-# Stage 4: Server Debug - With debugging tools
+# Stage 5: Server Debug
 # =============================================================================
 FROM server AS server-debug
 

@@ -27,11 +27,32 @@ permissions:
   packages: write
 
 jobs:
-  # Build AMD64 using official packages (fast)
+  # =============================================================================
+  # AMD64 Build - Using Hetzner Cloud x86 Server
+  # =============================================================================
+  create-runner-amd64:
+    name: Create AMD64 Runner
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.create-runner.outputs.label }}
+      server_id: ${{ steps.create-runner.outputs.server_id }}
+    steps:
+      - name: Create Hetzner Cloud runner
+        id: create-runner
+        uses: Cyclenerd/hcloud-github-runner@v1
+        with:
+          mode: create
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          server_type: ccx33  # 8 dedicated x86 cores, 32GB RAM, 240GB SSD
+          location: nbg1
+          image: ubuntu-24.04
+
   build-amd64:
-    name: Build AMD64 (Official Packages)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    name: Build AMD64
+    needs: create-runner-amd64
+    runs-on: ${{ needs.create-runner-amd64.outputs.label }}
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -83,25 +104,53 @@ jobs:
           provenance: true
           sbom: true
 
-  # Build ARM64 from source (slow, needs more time)
+  delete-runner-amd64:
+    name: Delete AMD64 Runner
+    needs:
+      - create-runner-amd64
+      - build-amd64
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Delete Hetzner Cloud runner
+        uses: Cyclenerd/hcloud-github-runner@v1
+        with:
+          mode: delete
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          name: ${{ needs.create-runner-amd64.outputs.label }}
+          server_id: ${{ needs.create-runner-amd64.outputs.server_id }}
+
+  # =============================================================================
+  # ARM64 Build - Using Hetzner Cloud Native ARM Server (Ampere Altra)
+  # =============================================================================
+  create-runner-arm64:
+    name: Create ARM64 Runner
+    runs-on: ubuntu-latest
+    outputs:
+      label: ${{ steps.create-runner.outputs.label }}
+      server_id: ${{ steps.create-runner.outputs.server_id }}
+    steps:
+      - name: Create Hetzner Cloud runner
+        id: create-runner
+        uses: Cyclenerd/hcloud-github-runner@v1
+        with:
+          mode: create
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          server_type: cax41  # 16 ARM cores (Ampere Altra), 32GB RAM, 320GB SSD
+          location: nbg1
+          image: ubuntu-24.04
+
   build-arm64:
-    name: Build ARM64 (From Source)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 180  # 3 hours for compilation
+    name: Build ARM64 (Native)
+    needs: create-runner-arm64
+    runs-on: ${{ needs.create-runner-arm64.outputs.label }}
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
-          docker system prune -af
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/arm64
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -138,7 +187,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile.arm64
+          file: ./Dockerfile
           platforms: linux/arm64
           target: server
           push: ${{ github.event_name != 'pull_request' }}
@@ -149,12 +198,31 @@ jobs:
           provenance: true
           sbom: true
 
-  # Create multi-arch manifest after both builds complete
+  delete-runner-arm64:
+    name: Delete ARM64 Runner
+    needs:
+      - create-runner-arm64
+      - build-arm64
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    steps:
+      - name: Delete Hetzner Cloud runner
+        uses: Cyclenerd/hcloud-github-runner@v1
+        with:
+          mode: delete
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
+          name: ${{ needs.create-runner-arm64.outputs.label }}
+          server_id: ${{ needs.create-runner-arm64.outputs.server_id }}
+
+  # =============================================================================
+  # Create Multi-Arch Manifest
+  # =============================================================================
   create-manifest:
     name: Create Multi-Arch Manifest
     needs: [build-amd64, build-arm64]
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Login to GitHub Container Registry
@@ -206,12 +274,14 @@ jobs:
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-arm64
           docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest
 
-  # Test images after manifest creation
+  # =============================================================================
+  # Test Images
+  # =============================================================================
   test:
     name: Test Images
     needs: create-manifest
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
