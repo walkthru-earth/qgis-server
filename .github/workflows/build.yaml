@@ -64,10 +64,7 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
           tags: |
-            type=ref,event=branch,suffix=-amd64
-            type=ref,event=pr,suffix=-amd64
-            type=semver,pattern={{version}},suffix=-amd64
-            type=raw,value=latest-amd64,enable={{is_default_branch}}
+            type=raw,value=build-amd64
           flavor: |
             latest=false
 
@@ -133,10 +130,7 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
           tags: |
-            type=ref,event=branch,suffix=-arm64
-            type=ref,event=pr,suffix=-arm64
-            type=semver,pattern={{version}},suffix=-arm64
-            type=raw,value=latest-arm64,enable={{is_default_branch}}
+            type=raw,value=build-arm64
           flavor: |
             latest=false
 
@@ -178,46 +172,38 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Determine tag
-        id: tag
+      - name: Create version manifest (GHCR)
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          fi
+          VERSION="${GITHUB_REF#refs/tags/}"
+          docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION} \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-arm64
+          docker manifest push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION}
 
-      - name: Create and push GHCR manifest
+      - name: Create version manifest (Docker Hub)
+        if: startsWith(github.ref, 'refs/tags/') && vars.DOCKERHUB_USERNAME != ''
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${TAG} \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${TAG}-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${TAG}-arm64
-          docker manifest push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${TAG}
-
-      - name: Create and push Docker Hub manifest
-        if: vars.DOCKERHUB_USERNAME != ''
-        run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${TAG} \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${TAG}-amd64 \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${TAG}-arm64
-          docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${TAG}
+          VERSION="${GITHUB_REF#refs/tags/}"
+          docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${VERSION} \
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-amd64 \
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-arm64
+          docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${VERSION}
 
       - name: Create latest manifest (GHCR)
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: |
           docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}-arm64
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-amd64 \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-arm64
           docker manifest push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest
 
       - name: Create latest manifest (Docker Hub)
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && vars.DOCKERHUB_USERNAME != ''
         run: |
           docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${{ github.ref_name }}-amd64 \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${{ github.ref_name }}-arm64
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-amd64 \
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-arm64
           docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest
 
   # Test images after manifest creation
@@ -243,7 +229,7 @@ jobs:
         run: |
           docker run --rm -d --name qgis-test \
             -p 8080:8080 \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest
 
           # Wait for server to start
           sleep 15
