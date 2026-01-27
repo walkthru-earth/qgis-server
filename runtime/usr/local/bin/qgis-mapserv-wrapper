@@ -1,0 +1,11 @@
+#!/bin/bash
+# QGIS MapServer FCGI Wrapper
+# Restores environment variables for FCGI processes
+
+# Source the saved environment
+if [ -f /tmp/init-env ]; then
+    source /tmp/init-env
+fi
+
+# Execute the QGIS MapServer FCGI binary
+exec /usr/local/www/cgi-bin/qgis_mapserv.fcgi

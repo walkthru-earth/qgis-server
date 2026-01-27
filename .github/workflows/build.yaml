@@ -1,0 +1,167 @@
+name: Build and Push Multi-Arch Images
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  schedule:
+    # Rebuild weekly on Sunday at 2:00 UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      qgis_version:
+        description: 'QGIS version/branch to build'
+        required: false
+        default: 'master'
+
+env:
+  REGISTRY_GHCR: ghcr.io
+  REGISTRY_DOCKER: docker.io
+  IMAGE_NAME_GHCR: walkthru-earth/qgis-server
+  IMAGE_NAME_DOCKER: walkthruearth/qgis-server
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build Multi-Arch Images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 480  # 8 hours for ARM64 emulation
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: server
+            suffix: ''
+          - target: server-debug
+            suffix: '-debug'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Free disk space
+        run: |
+          df -h
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          docker system prune -af
+          df -h
+
+      # Required for ARM64 emulation
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64,linux/amd64
+
+      # Required for multi-platform builds
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      # Login to registries
+      - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request' && vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_DOCKER }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Extract metadata for tags
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
+          tags: |
+            type=ref,event=branch,suffix=${{ matrix.suffix }}
+            type=ref,event=pr,suffix=${{ matrix.suffix }}
+            type=semver,pattern={{version}},suffix=${{ matrix.suffix }}
+            type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.suffix }}
+            type=raw,value=latest,enable={{is_default_branch}},suffix=${{ matrix.suffix }}
+          flavor: |
+            latest=false
+
+      # Build and push
+      - name: Build and push ${{ matrix.target }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          target: ${{ matrix.target }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            QGIS_VERSION=${{ github.event.inputs.qgis_version || 'master' }}
+            GDAL_VERSION=3.12.1
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+      # Output image digest
+      - name: Image digest
+        run: echo "Image digest - ${{ steps.meta.outputs.digest }}"
+
+  test:
+    name: Test Images
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    strategy:
+      matrix:
+        arch: [amd64]  # ARM64 testing requires self-hosted runner
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Test server image
+        run: |
+          docker run --rm -d --name qgis-test \
+            -p 8080:8080 \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }}
+
+          # Wait for server to start
+          sleep 10
+
+          # Test WMS capabilities
+          curl -f "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities" || exit 1
+
+          # Cleanup
+          docker stop qgis-test
+
+      - name: Test Python imports
+        run: |
+          docker run --rm \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }} \
+            python3 -c "from qgis.core import *; print('QGIS Core OK')"
+
+          docker run --rm \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${{ github.ref_name }} \
+            python3 -c "from qgis.server import *; print('QGIS Server OK')"

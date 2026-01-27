@@ -1,0 +1,85 @@
+services:
+  # Main QGIS Server with Apache
+  qgis-server:
+    image: walkthruearth/qgis-server:${DOCKER_TAG:-latest}
+    build:
+      context: .
+      target: server
+      args:
+        QGIS_VERSION: ${QGIS_VERSION:-master}
+        GDAL_VERSION: ${GDAL_VERSION:-3.12.1}
+    ports:
+      - "8080:8080"
+    environment:
+      QGIS_SERVER_LOG_LEVEL: "0"
+      QGIS_PROJECT_FILE: /etc/qgisserver/project.qgs
+      QGIS_AUTH_DB_DIR_PATH: /etc/qgisserver/
+      PGSERVICEFILE: /etc/qgisserver/pg_service.conf
+    volumes:
+      - ./tests/data:/etc/qgisserver:ro
+      - qgis-cache:/var/cache/qgisserver
+      - qgis-tmp:/tmp
+    user: www-data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Landing page mode (no project file)
+  qgis-landingpage:
+    image: walkthruearth/qgis-server:${DOCKER_TAG:-latest}
+    ports:
+      - "8081:8080"
+    environment:
+      QGIS_SERVER_LOG_LEVEL: "0"
+      QGIS_SERVER_LANDING_PAGE_PREFIX: /mapserv
+      QGIS_SERVER_LANDING_PAGE_PROJECTS_DIRECTORIES: /etc/qgisserver
+    volumes:
+      - ./tests/data:/etc/qgisserver:ro
+
+  # Spawn-fcgi backend (lightweight)
+  qgis-fcgi:
+    image: walkthruearth/qgis-server:${DOCKER_TAG:-latest}
+    environment:
+      SERVER: spawn-fcgi
+      LIGHTTPD_FASTCGI_PORT: "3000"
+      QGIS_PROJECT_FILE: /etc/qgisserver/project.qgs
+    volumes:
+      - ./tests/data:/etc/qgisserver:ro
+    user: "1000:1000"
+    read_only: true
+
+  # Lighttpd frontend (connects to spawn-fcgi)
+  qgis-lighttpd:
+    image: walkthruearth/qgis-server:${DOCKER_TAG:-latest}
+    ports:
+      - "8082:8080"
+    environment:
+      SERVER: lighttpd
+      LIGHTTPD_FASTCGI_HOST: qgis-fcgi
+      LIGHTTPD_FASTCGI_PORT: "3000"
+    depends_on:
+      - qgis-fcgi
+    user: "1000:1000"
+    read_only: true
+
+  # PostgreSQL with PostGIS
+  db:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: qgis
+      POSTGRES_PASSWORD: qgis
+      POSTGRES_DB: qgis
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qgis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  qgis-cache:
+  qgis-tmp:
+  pgdata:

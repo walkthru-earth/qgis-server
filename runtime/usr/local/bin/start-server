@@ -1,0 +1,52 @@
+#!/bin/bash
+set -e
+
+# Install custom fonts if present
+if [ -d /etc/qgisserver/fonts/ ]; then
+    fc-cache --really-force --system-only
+fi
+
+# Export environment for FCGI processes
+export_env() {
+    local filter="${FILTER_ENV:-}"
+    local get_env="${GET_ENV:-env}"
+    if [ -n "$filter" ]; then
+        ${get_env} | grep -v "$filter" | sed -e 's/.\+/export "\0"/' > /tmp/init-env
+    else
+        ${get_env} | sed -e 's/.\+/export "\0"/' > /tmp/init-env
+    fi
+}
+
+case "${SERVER:-apache}" in
+    spawn-fcgi)
+        echo "Starting with spawn-fcgi"
+        export_env
+        if [ -z "${LIGHTTPD_FASTCGI_SOCKET}" ]; then
+            exec /usr/bin/spawn-fcgi -p "${LIGHTTPD_FASTCGI_PORT:-3000}" -n -- /usr/local/bin/qgis-mapserv-wrapper
+        else
+            exec /usr/bin/spawn-fcgi -s "${LIGHTTPD_FASTCGI_SOCKET}" -n -- /usr/local/bin/qgis-mapserv-wrapper
+        fi
+        ;;
+    lighttpd)
+        echo "Starting with lighttpd"
+        lighttpd -tt -f "${LIGHTTPD_CONF}"
+        exec /usr/sbin/lighttpd -D -f "${LIGHTTPD_CONF}"
+        ;;
+    *)
+        echo "Starting with Apache2"
+        export_env
+
+        # Create PassEnv configuration for Apache
+        ${GET_ENV:-env} ${FILTER_ENV:-} | sed -e 's/^\([^=]*\)=.*/PassEnv \1/' > /tmp/pass-env
+
+        # Always use port 8080 for consistent behavior
+        # (Remove any root-based port switching for predictable container networking)
+
+        # Graceful shutdown handling
+        trap 'echo "Received SIGTERM"; apache2ctl graceful-stop' TERM
+        trap '' WINCH
+
+        rm -f "${APACHE_PID_FILE}"
+        exec apache2 -DFOREGROUND
+        ;;
+esac

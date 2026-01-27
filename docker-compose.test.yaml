@@ -1,0 +1,28 @@
+services:
+  qgis:
+    image: walkthruearth/qgis-server:${DOCKER_TAG:-latest}
+    build:
+      context: .
+      target: server
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  test:
+    image: curlimages/curl:latest
+    depends_on:
+      qgis:
+        condition: service_healthy
+    command: |
+      sh -c '
+        echo "Testing WMS GetCapabilities..."
+        curl -sf "http://qgis:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities" > /dev/null && echo "WMS OK" || exit 1
+
+        echo "Testing WFS GetCapabilities..."
+        curl -sf "http://qgis:8080/ows?SERVICE=WFS&REQUEST=GetCapabilities" > /dev/null && echo "WFS OK" || exit 1
+
+        echo "All tests passed!"
+      '

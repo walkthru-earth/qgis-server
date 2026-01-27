@@ -1,0 +1,29 @@
+# Git
+.git
+.gitignore
+
+# GitHub
+.github
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build artifacts
+build/
+dist/
+
+# Test data (unless needed)
+tests/output/
+*.log
+
+# Local configs
+.env.local
+*.local.yaml
+docker-compose.override.yaml
