@@ -283,20 +283,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Test server image
+      - name: Test with main project (WMS + WFS + raster)
         run: |
           docker run --rm -d --name qgis-test \
             -p 8080:8080 \
+            -v ${{ github.workspace }}/tests/data:/etc/qgisserver:ro \
+            -e QGIS_PROJECT_FILE=/etc/qgisserver/test_project.qgs \
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest
 
-          # Wait for server to start
           sleep 15
 
-          # Test WMS endpoint responds (expect ServerException without project file)
-          curl -s "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities" | grep -q "ServerException" && echo "WMS endpoint responding correctly"
+          # WMS GetCapabilities — should return valid capabilities XML
+          curl -sf "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities" | grep -q "WMS_Capabilities" && echo "WMS GetCapabilities OK"
 
-          # Test server is listening (landing page returns 500 without a project, that's expected)
-          curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/" | grep -q "500" && echo "Server responding correctly"
+          # WMS GetMap — request a raster map image (landsat layer)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetMap&LAYERS=landsat&CRS=EPSG:4326&BBOX=44,0,46,3&WIDTH=256&HEIGHT=256&FORMAT=image/png")
+          [ "$HTTP_CODE" = "200" ] && echo "WMS GetMap (raster) OK" || { echo "WMS GetMap failed with $HTTP_CODE"; exit 1; }
 
-          # Cleanup
+          # WFS GetCapabilities
+          curl -sf "http://localhost:8080/ows?SERVICE=WFS&REQUEST=GetCapabilities" | grep -q "WFS_Capabilities" && echo "WFS GetCapabilities OK"
+
+          # WFS GetFeature — request vector features
+          curl -sf "http://localhost:8080/ows?SERVICE=WFS&REQUEST=GetFeature&TYPENAME=testlayer&MAXFEATURES=1" | grep -q "testlayer" && echo "WFS GetFeature OK"
+
           docker stop qgis-test
+
+      - name: Test with WFS-only project
+        run: |
+          docker run --rm -d --name qgis-test-wfs \
+            -p 8081:8080 \
+            -v ${{ github.workspace }}/tests/data:/etc/qgisserver:ro \
+            -e QGIS_PROJECT_FILE=/etc/qgisserver/test_project_wfs.qgs \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest
+
+          sleep 15
+
+          # WFS GetCapabilities
+          curl -sf "http://localhost:8081/ows?SERVICE=WFS&REQUEST=GetCapabilities" | grep -q "WFS_Capabilities" && echo "WFS-only project: GetCapabilities OK"
+
+          # WFS GetFeature
+          curl -sf "http://localhost:8081/ows?SERVICE=WFS&REQUEST=GetFeature&TYPENAME=testlayer&MAXFEATURES=1" | grep -q "testlayer" && echo "WFS-only project: GetFeature OK"
+
+          docker stop qgis-test-wfs
