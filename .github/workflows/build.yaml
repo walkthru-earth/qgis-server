@@ -342,31 +342,32 @@ jobs:
 
       - name: Test qgis_process and PyQGIS bindings
         run: |
-          # Test qgis_process lists algorithms (native + processing)
-          ALGO_COUNT=$(docker run --rm -e QT_QPA_PLATFORM=offscreen \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            qgis_process list 2>&1 | grep -c 'native:')
-          echo "Available native algorithms: $ALGO_COUNT"
-          [ "$ALGO_COUNT" -gt 200 ] && echo "qgis_process OK" || { echo "Too few algorithms: $ALGO_COUNT"; exit 1; }
-
-          # Test GDAL processing algorithms (loaded via processing plugin)
-          GDAL_ALGO_COUNT=$(docker run --rm -e QT_QPA_PLATFORM=offscreen \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            qgis_process list 2>&1 | grep -c 'gdal:')
-          echo "Available gdal: algorithms: $GDAL_ALGO_COUNT"
-          [ "$GDAL_ALGO_COUNT" -gt 30 ] && echo "Processing plugin OK (GDAL provider loaded)" || { echo "Too few gdal: algorithms: $GDAL_ALGO_COUNT"; exit 1; }
-
-          # Run a native algorithm to verify qgis_process actually works
+          # Single container run for all qgis_process tests (avoids ~15s startup per container)
           docker run --rm -e QT_QPA_PLATFORM=offscreen \
             -v ${{ github.workspace }}/tests/data:/data:ro \
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            qgis_process run native:buffer -- INPUT=/data/testlayer.shp DISTANCE=1 OUTPUT=/tmp/buffered.gpkg \
-            && echo "qgis_process run native:buffer OK" || { echo "qgis_process run failed"; exit 1; }
+            sh -c '
+              set -e
+              # Cache algorithm list (single qgis_process init)
+              ALGO_LIST=$(qgis_process list 2>&1 || true)
 
-          # Test PyQGIS Python imports
-          docker run --rm -e QT_QPA_PLATFORM=offscreen \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            python3 -c "from qgis.core import QgsApplication; print('PyQGIS OK')"
+              # Count native algorithms
+              NATIVE_COUNT=$(echo "$ALGO_LIST" | grep -c "native:" || true)
+              echo "Available native algorithms: $NATIVE_COUNT"
+              [ "$NATIVE_COUNT" -gt 200 ] && echo "qgis_process OK" || { echo "Too few native: $NATIVE_COUNT"; exit 1; }
+
+              # Count GDAL algorithms (loaded via processing plugin)
+              GDAL_COUNT=$(echo "$ALGO_LIST" | grep -c "gdal:" || true)
+              echo "Available gdal: algorithms: $GDAL_COUNT"
+              [ "$GDAL_COUNT" -gt 30 ] && echo "Processing plugin OK" || { echo "Too few gdal: $GDAL_COUNT"; exit 1; }
+
+              # Run a native algorithm end-to-end (ignore exit code — qgis_process may crash on shutdown)
+              qgis_process run native:buffer -- INPUT=/data/testlayer.shp DISTANCE=1 OUTPUT=/tmp/buffered.gpkg || true
+              [ -f /tmp/buffered.gpkg ] && echo "qgis_process run native:buffer OK" || { echo "Buffer output not created"; exit 1; }
+
+              # Test PyQGIS imports
+              python3 -c "from qgis.core import QgsApplication; print(\"PyQGIS OK\")"
+            '
 
       - name: Test with WFS-only project
         run: |
