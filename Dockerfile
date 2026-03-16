@@ -261,9 +261,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin/
 COPY --from=builder /usr/local/lib /usr/local/lib/
 COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
 
-# Patch qgis/utils.py for headless operation (WITH_GUI=OFF)
+# Patch GUI imports for headless operation (WITH_GUI=OFF)
 COPY patches/fix_headless_imports.py /tmp/fix_headless_imports.py
-RUN python3 /tmp/fix_headless_imports.py /usr/local/share/qgis/python/qgis/utils.py && \
+RUN python3 /tmp/fix_headless_imports.py /usr/local/share/qgis/python && \
     rm /tmp/fix_headless_imports.py
 
 # Copy GeoParquet GDAL plugin into the existing plugins directory

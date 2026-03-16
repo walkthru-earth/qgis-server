@@ -23,6 +23,6 @@ echo "  [2/3] Patched qmetatype.h static_assert for Qt 6.4"
 # 3. SIP 6.8: Missing QList<qint64> mapped type (needs Qt 6.5+ PyQt6)
 #    Append the mapped type to conversions.sip
 cat "${SCRIPT_DIR}/qlist_qint64.sip" >> "${QGIS_SRC}/python/PyQt6/core/conversions.sip"
-echo "  [3/4] Added QList<qint64> SIP mapped type"
+echo "  [3/3] Added QList<qint64> SIP mapped type"
 
 echo "All build patches applied successfully"
