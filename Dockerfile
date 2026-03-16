@@ -65,6 +65,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         qt6-positioning-dev \
         qt6-svg-dev \
         qt6-serialport-dev \
+        qt6-multimedia-dev \
         qt6-5compat-dev \
         libqt6opengl6-dev \
         libqt6sql6-sqlite \
@@ -198,6 +199,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         libqt6widgets6t64 \
         libqt6network6t64 \
         libqt6serialport6 \
+        libqt6multimedia6 \
         libqt6sql6t64 \
         libqt6sql6-sqlite \
         libqt6xml6t64 \
