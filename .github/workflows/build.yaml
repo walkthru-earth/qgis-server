@@ -317,6 +317,11 @@ jobs:
 
           docker stop qgis-test
 
+      - name: Test GDAL GeoParquet driver
+        run: |
+          docker run --rm ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
+            ogrinfo --formats | grep -q "Parquet" && echo "GeoParquet driver OK" || { echo "GeoParquet driver NOT loaded"; exit 1; }
+
       - name: Test with WFS-only project
         run: |
           docker run --rm -d --name qgis-test-wfs \

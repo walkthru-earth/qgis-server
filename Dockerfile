@@ -138,6 +138,44 @@ RUN --mount=type=cache,target=/ccache,id=ccache-${TARGETARCH} \
     rm -rf /usr/local/share/qgis/i18n/
 
 # =============================================================================
+# Stage 2b: Build GeoParquet plugin for GDAL (standalone, ~150MB added)
+# =============================================================================
+FROM base AS parquet-builder
+
+ARG GDAL_VERSION
+ARG TARGETARCH
+
+RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git && \
+    # Add Apache Arrow apt repository
+    curl -LO -fsS https://apache.jfrog.io/artifactory/arrow/ubuntu/apache-arrow-apt-source-latest-noble.deb && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -V ./apache-arrow-apt-source-latest-noble.deb && \
+    rm -f apache-arrow-apt-source-latest-noble.deb && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -V --no-install-recommends \
+        libarrow-dev=23.0.1-1 \
+        libparquet-dev=23.0.1-1 \
+        libarrow-acero-dev=23.0.1-1 \
+        libarrow-dataset-dev=23.0.1-1 \
+        libarrow-compute-dev=23.0.1-1
+
+# Clone matching GDAL source (must exactly match base image version)
+WORKDIR /gdal-src
+RUN git clone --depth=1 --branch=v${GDAL_VERSION} https://github.com/OSGeo/gdal.git .
+
+# Build only the Parquet driver as a standalone plugin
+WORKDIR /gdal-src/build-parquet
+RUN cmake ../ogr/ogrsf_frmts/parquet \
+        -DCMAKE_PREFIX_PATH=/usr \
+        -DCMAKE_BUILD_TYPE=Release && \
+    cmake --build . -j$(nproc)
+
+# =============================================================================
 # Stage 3: Runtime
 # =============================================================================
 FROM base AS runtime
@@ -193,7 +231,17 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         fonts-dejavu-core \
         # Utilities
         xvfb \
-        xauth
+        xauth && \
+    # Add Apache Arrow runtime libs for GeoParquet plugin (~150MB)
+    curl -LO -fsS https://apache.jfrog.io/artifactory/arrow/ubuntu/apache-arrow-apt-source-latest-noble.deb && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -V ./apache-arrow-apt-source-latest-noble.deb && \
+    rm -f apache-arrow-apt-source-latest-noble.deb && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -V --no-install-recommends \
+        libarrow2300 \
+        libparquet2300 \
+        libarrow-dataset2300 \
+        libarrow-compute2300
 
 # =============================================================================
 # Stage 4: Server - Production QGIS Server
@@ -204,6 +252,12 @@ FROM runtime AS server
 COPY --from=builder /usr/local/bin /usr/local/bin/
 COPY --from=builder /usr/local/lib /usr/local/lib/
 COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
+
+# Copy GeoParquet GDAL plugin into the existing plugins directory
+COPY --from=parquet-builder /gdal-src/build-parquet/ogr_Parquet.so /tmp/ogr_Parquet.so
+RUN GDAL_PLUGDIR=$(find /usr/lib -type d -name gdalplugins | head -1) && \
+    mv /tmp/ogr_Parquet.so ${GDAL_PLUGDIR}/ogr_Parquet.so && \
+    echo "Installed GeoParquet plugin to ${GDAL_PLUGDIR}"
 
 # Copy runtime configuration
 COPY runtime/ /

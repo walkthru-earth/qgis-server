@@ -92,13 +92,34 @@ We investigated upgrading Qt on Ubuntu Noble. None of the available options are 
 
 The two patches we apply are minimal, well-understood, and forward-compatible (they replicate behavior already present in Qt 6.6+). See [Future Work](#future-work) for the plan to drop them.
 
+### GeoParquet Support (GDAL Plugin)
+
+The `ubuntu-small` GDAL base image intentionally excludes GeoParquet/Apache Arrow support to keep its size small (~385MB vs ~1.5GB for `ubuntu-full`). We add GeoParquet by building GDAL's Parquet driver as a **standalone plugin** (`ogr_Parquet.so`) in a separate build stage.
+
+**How it works:**
+
+1. A dedicated `parquet-builder` stage installs Apache Arrow dev libs from the [official Arrow apt repository](https://apache.jfrog.io/artifactory/arrow/ubuntu/) and clones the exact GDAL source matching the base image version
+2. Only the Parquet driver is compiled as a standalone plugin using GDAL's plugin build system
+3. The resulting `ogr_Parquet.so` (~1MB) is copied into the GDAL plugins directory
+4. Apache Arrow runtime libraries (~150MB) are installed in the runtime stage
+
+**Critical version constraint:** The GDAL source version used to build the plugin **must exactly match** the `libgdal` version in the base image. A mismatch causes `undefined symbol` errors at runtime (see [GDAL issue #13384](https://github.com/OSGeo/gdal/issues/13384)).
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| Apache Arrow | 23.0.1 | From official Apache apt repo for Ubuntu Noble |
+| GDAL plugin | Matches base image | Built from `v${GDAL_VERSION}` tag |
+| Runtime libs | `libarrow2300`, `libparquet2300`, `libarrow-dataset2300`, `libarrow-compute2300` | ~150MB added |
+
+**Result:** Full GeoParquet read/write support (`Parquet -vector- (rw+uv)`) with only ~150MB added to the final image instead of ~1.1GB from switching to `ubuntu-full`.
+
 ---
 
 ## Docker Build Architecture
 
 ### Multi-Stage Build
 
-The Dockerfile uses a 5-stage build optimized for caching and minimal image size.
+The Dockerfile uses a 6-stage build optimized for caching and minimal image size.
 
 ```mermaid
 flowchart TB
@@ -110,21 +131,27 @@ flowchart TB
         BUILDER["builder<br/>+ Qt6 dev packages<br/>+ Build tools (cmake, ninja, gcc)<br/>+ QGIS source<br/>CMake: BUILD_WITH_QT6=ON"]
     end
 
+    subgraph "Stage 2b: GeoParquet Plugin"
+        PARQUET["parquet-builder<br/>+ Apache Arrow dev libs<br/>+ GDAL source (matching version)<br/>Builds ogr_Parquet.so only"]
+    end
+
     subgraph "Stage 3: Runtime"
-        RUNTIME["runtime<br/>+ Qt6 runtime libs<br/>+ Apache, Lighttpd, spawn-fcgi<br/>+ Fonts"]
+        RUNTIME["runtime<br/>+ Qt6 runtime libs<br/>+ Apache Arrow runtime libs<br/>+ Apache, Lighttpd, spawn-fcgi<br/>+ Fonts"]
     end
 
     subgraph "Stage 4-5: Final Images"
-        SERVER["server<br/>Production image<br/>~800MB"]
-        DEBUG["server-debug<br/>+ GDB, strace, valgrind<br/>~900MB"]
+        SERVER["server<br/>Production image<br/>~950MB"]
+        DEBUG["server-debug<br/>+ GDB, strace, valgrind<br/>~1050MB"]
     end
 
     BASE --> BUILDER
+    BASE --> PARQUET
     BASE --> RUNTIME
     RUNTIME --> SERVER
     SERVER --> DEBUG
 
     BUILDER -.->|"COPY binaries"| SERVER
+    PARQUET -.->|"COPY ogr_Parquet.so"| SERVER
 ```
 
 ### Build Stages
@@ -133,9 +160,12 @@ flowchart TB
 |-------|---------|-------------|
 | `base` | GDAL + Python base | ~500MB |
 | `builder` | Compile QGIS with Qt6 | ~4GB (not in final) |
-| `runtime` | Runtime dependencies only | ~700MB |
-| `server` | Final production image | ~800MB |
-| `server-debug` | With debugging tools | ~900MB |
+| `parquet-builder` | Build GeoParquet GDAL plugin | ~2GB (not in final) |
+| `runtime` | Runtime dependencies + Arrow libs | ~850MB |
+| `server` | Final production image | ~950MB |
+| `server-debug` | With debugging tools | ~1050MB |
+
+> **Note:** Stages `builder` and `parquet-builder` run in parallel during Docker builds. Only the compiled binaries (~1MB plugin `.so`) are copied to the final image.
 
 ### CMake Configuration
 

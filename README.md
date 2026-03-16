@@ -7,6 +7,7 @@ Production-ready QGIS Server Docker image with multi-architecture support.
 - **Multi-Architecture**: Supports both `linux/amd64` and `linux/arm64`
 - **Multiple Server Modes**: Apache, Lighttpd, or spawn-fcgi
 - **Production Ready**: Healthchecks, non-root user support, read-only filesystem
+- **GeoParquet Support**: Read/write GeoParquet via standalone GDAL plugin (Apache Arrow 23.0.1)
 - **Latest Stack**: GDAL 3.12.2, Ubuntu Noble
 
 ### Architecture Details
