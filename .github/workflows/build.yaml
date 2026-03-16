@@ -143,7 +143,7 @@ jobs:
           github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           hcloud_token: ${{ secrets.HCLOUD_TOKEN }}
           server_type: cax41  # 16 ARM cores (Ampere Altra), 32GB RAM, 320GB SSD
-          location: nbg1
+          location: fsn1  # Falkenstein
           image: ubuntu-24.04
           pre_runner_script: ${{ env.HCLOUD_PRE_RUNNER_SCRIPT }}
 

@@ -96,11 +96,17 @@ RUN rm -rf /usr/local/lib/cmake/proj
 WORKDIR /src
 RUN git clone --depth=1 --branch=${QGIS_VERSION} https://github.com/qgis/QGIS.git .
 
-# Patch for Qt 6.4 compatibility (boundValueNames() requires Qt 6.6+)
-# Replace boundValueNames() with empty QStringList - it's only used for debug logging
+# Patches for Qt 6.4 compatibility (Ubuntu Noble ships Qt 6.4, some code needs Qt 6.6+)
 RUN echo 'Patching QGIS for Qt 6.4 compatibility...' && \
+    # 1. boundValueNames() requires Qt 6.6+ — replace with empty QStringList (debug logging only)
     sed -i 's/query->boundValueNames()/QStringList()/g' \
         src/core/auth/qgsauthconfigurationstoragedb.cpp && \
+    # 2. Qt 6.4 MOC requires full type for Q_PROPERTY / Q_DECLARE_METATYPE with pointer types.
+    #    qgsmaplayermodel.h and qgsmaplayerproxymodel.h forward-declare QgsMapLayer but MOC
+    #    needs sizeof(QgsMapLayer) — add the missing include.
+    sed -i 's|^class QgsMapLayer;|#include "qgsmaplayer.h"|' \
+        src/core/qgsmaplayermodel.h \
+        src/core/qgsmaplayerproxymodel.h && \
     echo 'Patch complete'
 
 # Configure ccache
