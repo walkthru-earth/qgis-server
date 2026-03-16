@@ -102,8 +102,8 @@ jobs:
           outputs: type=image,"name=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }},${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}",push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
           cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-amd64
           cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-amd64,mode=max,image-manifest=true
-          provenance: true
-          sbom: true
+          provenance: false
+          sbom: false
 
   delete-runner-amd64:
     name: Delete AMD64 Runner
@@ -190,8 +190,8 @@ jobs:
           outputs: type=image,"name=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }},${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}",push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
           cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-arm64
           cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-arm64,mode=max,image-manifest=true
-          provenance: true
-          sbom: true
+          provenance: false
+          sbom: false
 
   delete-runner-arm64:
     name: Delete ARM64 Runner
