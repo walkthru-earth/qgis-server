@@ -334,7 +334,7 @@ jobs:
 
       - name: Smoke test (drivers, CLI, processing, bindings)
         run: |
-          docker run --rm -e QT_QPA_PLATFORM=offscreen \
+          docker run --rm \
             -v ${{ github.workspace }}/tests:/tests:ro \
             -v /tmp/smoke-report:/tmp/smoke-report \
             -e TEST_DATA=/tests/data \

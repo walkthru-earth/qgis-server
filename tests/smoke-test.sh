@@ -342,11 +342,18 @@ for mod in PyQt6.QtCore PyQt6.QtGui PyQt6.QtWidgets PyQt6.QtSvg PyQt6.QtNetwork;
     fi
 done
 
-# Processing plugin Python imports
-if python3 -c "import processing" >/dev/null 2>&1; then
-    pass "processing (Python module)"
+# Processing plugin Python import
+if python3 -c "from qgis.gui import QgsGui" >/dev/null 2>&1; then
+    pass "qgis.gui"
 else
-    warn "processing (Python module not importable)"
+    warn "qgis.gui (not available)"
+fi
+
+# Processing plugin (validated via qgis_process algorithm counts above)
+if [ "$GDAL_COUNT" -gt 0 ]; then
+    pass "processing plugin ($GDAL_COUNT GDAL algorithms via qgis_process)"
+else
+    warn "processing plugin (not loaded)"
 fi
 
 # =============================================================================

@@ -82,7 +82,7 @@ Ubuntu Noble ships Qt 6.4.2 and PyQt6 6.6/SIP 6.8, but QGIS code assumes Qt 6.6+
 
 #### Runtime patches
 
-- **`gui_stub.py`** — When QGIS is built with `WITH_GUI=OFF`, the `qgis.gui` C extension doesn't exist, but the processing plugin and its dependencies import many GUI classes at load time. Instead of patching individual files, we install a stub `qgis/gui.py` module that uses a metaclass-based `_Stub` class to absorb any attribute access, instantiation, or call. This allows all `from qgis.gui import X` statements to succeed silently, enabling the full processing plugin (280+ native + 57 GDAL algorithms) to load in headless mode.
+- **`WITH_GUI=ON` with headless runtime** — QGIS is built with GUI support enabled because `qgis_process` and the processing plugin depend on `qgis_gui` at the C++ level. The image runs headless via `QT_QPA_PLATFORM=offscreen` — no display server is needed. This is the same approach used by the official QGIS Docker images.
 
 ### Why Not Upgrade Qt?
 
@@ -190,7 +190,7 @@ cmake .. \
     -DWITH_SERVER=ON \
     -DWITH_SERVER_LANDINGPAGE_WEBAPP=OFF \
     -DWITH_DESKTOP=OFF \            # Server only
-    -DWITH_GUI=OFF \
+    -DWITH_GUI=ON \              # GUI lib needed for qgis_process (runs headless with QT_QPA_PLATFORM=offscreen)
     -DWITH_3D=OFF \
     -DWITH_PDAL=OFF \
     -DWITH_BINDINGS=ON \            # Python bindings for qgis_process + PyQGIS
@@ -523,8 +523,7 @@ qgis-server/
 │       ├── start-server         # Entry point
 │       └── qgis-mapserv-wrapper # FCGI wrapper
 ├── patches/
-│   ├── apply.sh                 # Build-time patch script
-│   ├── gui_stub.py              # Stub qgis.gui module for headless builds
+│   ├── apply.sh                 # Build-time patch script (Qt 6.4 + SIP compat)
 │   └── qlist_qint64.sip        # SIP mapped type for QList<qint64>
 ├── tests/
 │   └── data/                    # Test project files
@@ -609,8 +608,7 @@ When the GDAL project releases a base image on **Ubuntu 25.04 (Plucky)** or late
 1. Update the `GDAL_VERSION` / base image to the newer Ubuntu variant
 2. Remove both Qt patches from the Dockerfile (the `qmetatype.h` patch and the `boundValueNames()` patch)
 3. Remove the SIP `QList<qint64>` mapped-type patch (`patches/qlist_qint64.sip`) — Qt 6.5+ / PyQt6 6.8+ includes this type natively
-4. Remove the GUI stub module (`patches/gui_stub.py`) — with `WITH_GUI=ON` or when the GUI C extension is available, the stub becomes unnecessary
-5. Benefit from stock Qt 6.8+ which has native support for all the features QGIS requires
+4. Benefit from stock Qt 6.8+ which has native support for all the features QGIS requires
 
 | Ubuntu Version | Qt Version | Patches Needed | GDAL Base Available |
 |---------------|-----------|---------------|-------------------|

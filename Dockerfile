@@ -128,7 +128,7 @@ RUN --mount=type=cache,target=/ccache,id=ccache-${TARGETARCH} \
         -DWITH_SERVER=ON \
         -DWITH_SERVER_LANDINGPAGE_WEBAPP=OFF \
         -DWITH_DESKTOP=OFF \
-        -DWITH_GUI=OFF \
+        -DWITH_GUI=ON \
         -DWITH_3D=OFF \
         -DWITH_PDAL=OFF \
         -DWITH_BINDINGS=ON \
@@ -265,10 +265,6 @@ COPY --from=builder /usr/local/bin /usr/local/bin/
 COPY --from=builder /usr/local/lib /usr/local/lib/
 COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
 
-# Install stub qgis.gui module for headless operation (WITH_GUI=OFF)
-# This allows the processing plugin to load without the GUI C extension
-COPY patches/gui_stub.py /usr/local/share/qgis/python/qgis/gui.py
-
 # Copy GeoParquet GDAL plugin into the existing plugins directory
 COPY --from=parquet-builder /gdal-src/build-parquet/ogr_Parquet.so /tmp/ogr_Parquet.so
 RUN GDAL_PLUGDIR=$(find /usr/lib -type d -name gdalplugins | head -1) && \
@@ -315,7 +311,8 @@ ENV FCGID_MAX_REQUESTS_PER_PROCESS=1000 \
     FCGID_IO_TIMEOUT=40
 
 # QGIS Server configuration
-ENV QGIS_SERVER_LOG_STDERR=1 \
+ENV QT_QPA_PLATFORM=offscreen \
+    QGIS_SERVER_LOG_STDERR=1 \
     QGIS_CUSTOM_CONFIG_PATH=/tmp \
     QGIS_PLUGINPATH=/var/www/plugins \
     QGIS_PREFIX_PATH=/usr/local \
