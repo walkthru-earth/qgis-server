@@ -268,13 +268,36 @@ jobs:
 
       - name: Update Docker Hub description
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: peter-evans/dockerhub-description@v5
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.IMAGE_NAME_DOCKER }}
-          readme-filepath: ./README.md
-          short-description: "QGIS Server Docker image — multi-arch (AMD64/ARM64), compiled from source with Qt6"
+        continue-on-error: true
+        run: |
+          # Get JWT token from Docker Hub API
+          TOKEN=$(curl -sf "https://hub.docker.com/v2/users/login/" \
+            -H "Content-Type: application/json" \
+            -d '{"username":"${{ vars.DOCKERHUB_USERNAME }}","password":"${{ secrets.DOCKERHUB_TOKEN }}"}' \
+            | jq -r '.token')
+
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::warning::Failed to authenticate with Docker Hub"
+            exit 0
+          fi
+
+          # Update full description (README) and short description
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X PATCH \
+            "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME_DOCKER }}/" \
+            -H "Authorization: JWT ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg full "$(cat README.md)" \
+              --arg short "QGIS Server Docker image — multi-arch (AMD64/ARM64), compiled from source with Qt6" \
+              '{full_description: $full, description: $short}')")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Docker Hub description updated successfully"
+          else
+            echo "::warning::Docker Hub description update failed (HTTP $HTTP_CODE)"
+            echo "$RESPONSE" | head -5
+          fi
 
   # =============================================================================
   # Test Images
