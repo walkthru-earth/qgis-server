@@ -295,8 +295,8 @@ jobs:
           # WMS GetCapabilities — should return valid capabilities XML
           curl -sf "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities" | grep -q "WMS_Capabilities" && echo "WMS GetCapabilities OK"
 
-          # WMS GetMap — request a raster map image (landsat layer)
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetMap&LAYERS=landsat&CRS=EPSG:4326&BBOX=44,0,46,3&WIDTH=256&HEIGHT=256&FORMAT=image/png")
+          # WMS GetMap — request a raster map image (landsat layer, extent ~17.9,30.1,18.1,30.3 in EPSG:4326)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetMap&LAYERS=landsat&CRS=EPSG:4326&BBOX=30.15,17.92,30.26,18.05&WIDTH=256&HEIGHT=256&FORMAT=image/png&VERSION=1.3.0")
           [ "$HTTP_CODE" = "200" ] && echo "WMS GetMap (raster) OK" || { echo "WMS GetMap failed with $HTTP_CODE"; exit 1; }
 
           # WFS GetCapabilities
