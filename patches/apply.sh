@@ -23,6 +23,12 @@ echo "  [2/3] Patched qmetatype.h static_assert for Qt 6.4"
 # 3. SIP 6.8: Missing QList<qint64> mapped type (needs Qt 6.5+ PyQt6)
 #    Append the mapped type to conversions.sip
 cat "${SCRIPT_DIR}/qlist_qint64.sip" >> "${QGIS_SRC}/python/PyQt6/core/conversions.sip"
-echo "  [3/3] Added QList<qint64> SIP mapped type"
+echo "  [3/4] Added QList<qint64> SIP mapped type"
+
+# 4. Server/headless: qgis/utils.py imports qgis.gui unconditionally,
+#    but we build with WITH_GUI=OFF. Make gui/widget imports optional
+#    so the processing plugin loads without qgis.gui.
+python3 "${SCRIPT_DIR}/fix_headless_imports.py" "${QGIS_SRC}/python/qgis/utils.py"
+echo "  [4/4] Made qgis.gui imports optional for headless operation"
 
 echo "All patches applied successfully"
