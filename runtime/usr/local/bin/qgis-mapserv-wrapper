@@ -8,4 +8,4 @@ if [ -f /tmp/init-env ]; then
 fi
 
 # Execute the QGIS MapServer FCGI binary
-exec /usr/local/www/cgi-bin/qgis_mapserv.fcgi
+exec /usr/local/bin/qgis_mapserv.fcgi

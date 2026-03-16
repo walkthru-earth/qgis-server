@@ -208,8 +208,8 @@ COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
 # Copy runtime configuration
 COPY runtime/ /
 
-# Update Apache config for compiled QGIS location
-RUN sed -i 's|/usr/lib/cgi-bin/qgis_mapserv.fcgi|/usr/local/bin/qgis_mapserv.fcgi|g' \
+# Update Apache config: use the wrapper script (restores env vars for FCGI processes)
+RUN sed -i 's|/usr/lib/cgi-bin/qgis_mapserv.fcgi|/usr/local/bin/qgis-mapserv-wrapper|g' \
         /etc/apache2/conf-enabled/qgis.conf && \
     sed -i 's|/usr/lib/cgi-bin/|/usr/local/bin/|g' \
         /etc/apache2/conf-enabled/qgis.conf

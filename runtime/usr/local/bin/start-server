@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Qt6 requires a platform plugin for headless operation
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
+
 # Install custom fonts if present
 if [ -d /etc/qgisserver/fonts/ ]; then
     fc-cache --really-force --system-only
