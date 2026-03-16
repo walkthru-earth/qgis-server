@@ -73,37 +73,33 @@ graph TB
 
 ### Multi-Stage Build
 
-The Dockerfile uses a 6-stage build optimized for caching and minimal image size.
+The Dockerfile uses a 5-stage build optimized for caching and minimal image size.
 
 ```mermaid
 flowchart TB
     subgraph "Stage 1: Base"
-        BASE["base<br/>ghcr.io/osgeo/gdal:ubuntu-small-3.12.2<br/>+ Python 3, curl, ca-certificates"]
+        BASE["base<br/>ghcr.io/osgeo/gdal:ubuntu-small-3.12.2<br/>+ curl, ca-certificates"]
     end
 
-    subgraph "Stage 2-3: Compilation"
-        BUILDER["builder<br/>+ Qt6 dev packages<br/>+ Build tools (cmake, ninja, clang)<br/>+ QGIS source<br/>CMake: BUILD_WITH_QT6=ON"]
-
-        BUILDER_DEBUG["builder-debug<br/>CMAKE_BUILD_TYPE=Debug<br/>+ Debug symbols"]
+    subgraph "Stage 2: Compilation"
+        BUILDER["builder<br/>+ Qt6 dev packages<br/>+ Build tools (cmake, ninja, gcc)<br/>+ QGIS source<br/>CMake: BUILD_WITH_QT6=ON"]
     end
 
-    subgraph "Stage 4: Runtime"
-        RUNTIME["runtime<br/>+ Qt6 runtime libs<br/>+ PyQt6<br/>+ Apache, Lighttpd, spawn-fcgi<br/>+ Fonts"]
+    subgraph "Stage 3: Runtime"
+        RUNTIME["runtime<br/>+ Qt6 runtime libs<br/>+ Apache, Lighttpd, spawn-fcgi<br/>+ Fonts"]
     end
 
-    subgraph "Stage 5-6: Final Images"
+    subgraph "Stage 4-5: Final Images"
         SERVER["server<br/>Production image<br/>~800MB"]
         DEBUG["server-debug<br/>+ GDB, strace, valgrind<br/>~900MB"]
     end
 
     BASE --> BUILDER
-    BUILDER --> BUILDER_DEBUG
     BASE --> RUNTIME
     RUNTIME --> SERVER
     SERVER --> DEBUG
 
     BUILDER -.->|"COPY binaries"| SERVER
-    BUILDER_DEBUG -.->|"COPY debug binaries"| DEBUG
 ```
 
 ### Build Stages
@@ -112,7 +108,6 @@ flowchart TB
 |-------|---------|-------------|
 | `base` | GDAL + Python base | ~500MB |
 | `builder` | Compile QGIS with Qt6 | ~4GB (not in final) |
-| `builder-debug` | Compile with debug symbols | ~5GB (not in final) |
 | `runtime` | Runtime dependencies only | ~700MB |
 | `server` | Final production image | ~800MB |
 | `server-debug` | With debugging tools | ~900MB |
@@ -490,7 +485,7 @@ Both builds run in parallel, so total pipeline time equals the slower build.
 1. **Native ARM builds**: No QEMU emulation - uses Hetzner Ampere Altra servers
 2. **Use ccache**: Mounted as BuildKit cache for incremental builds
 3. **Parallel ninja**: Uses all available cores (`ninja -j$(nproc)`)
-4. **GHA Cache**: Preserves Docker layers between CI runs
+4. **Registry cache**: Preserves Docker layers between CI runs (no size limit)
 5. **Ephemeral runners**: Fresh environment each build, no state pollution
 
 ### Resource Requirements

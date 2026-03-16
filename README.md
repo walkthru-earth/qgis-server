@@ -35,15 +35,13 @@ curl "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities"
 
 | Image | Description |
 |-------|-------------|
-| `ghcr.io/walkthru-earth/qgis-server:latest` | Production server |
-| `ghcr.io/walkthru-earth/qgis-server:latest-debug` | With GDB/debugging tools |
-| `docker.io/walkthruearth/qgis-server:latest` | Docker Hub mirror |
+| `ghcr.io/walkthru-earth/qgis-server:latest` | Production server (multi-arch) |
+| `docker.io/walkthruearth/qgis-server:latest` | Docker Hub mirror (multi-arch) |
 
 ### Available Tags
 
 - `latest` - Latest build from main branch
 - `vX.Y.Z` - Specific version releases
-- `*-debug` - Debug variants with debugging tools
 
 ## Configuration
 
