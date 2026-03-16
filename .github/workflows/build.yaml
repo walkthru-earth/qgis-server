@@ -246,7 +246,6 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
             ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
           tags: |
-            type=ref,event=branch
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
 
