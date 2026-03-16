@@ -115,6 +115,54 @@ RUN echo 'Patching for Qt 6.4 compatibility...' && \
     #    Patch the system Qt header to match Qt 6.6+ behavior — fixes all QGIS headers at once.
     find /usr/include -name 'qmetatype.h' -path '*/qt6/*' -exec \
         sed -i 's/static_assert(sizeof(T), "Type argument of Q_PROPERTY or Q_DECLARE_METATYPE(T\*) must be fully defined");/\/\/ static_assert removed for Qt 6.4 compat (relaxed in Qt 6.6+)/g' {} \; && \
+    # 3. SIP on Noble (6.8) lacks QList<qint64> mapped type (needs Qt 6.5+ PyQt6 bindings).
+    #    Add it to conversions.sip so QgsSpatialIndex methods can generate Python bindings.
+    cat >> python/PyQt6/core/conversions.sip <<'SIPEOF'
+
+%MappedType QList<qint64>
+{
+%TypeHeaderCode
+#include <QList>
+%End
+
+%ConvertFromTypeCode
+  PyObject *l;
+
+  if ((l = PyList_New(sipCpp->size())) == NULL)
+    return NULL;
+
+  QList<qint64>::iterator it = sipCpp->begin();
+  for (int i = 0; it != sipCpp->end(); ++it, ++i)
+  {
+    PyObject *tobj;
+
+    if ((tobj = PyLong_FromLongLong(*it)) == NULL)
+    {
+      Py_DECREF(l);
+      return NULL;
+    }
+    PyList_SET_ITEM(l, i, tobj);
+  }
+
+  return l;
+%End
+
+%ConvertToTypeCode
+  if (sipIsErr == NULL)
+    return PyList_Check(sipPy);
+
+  QList<qint64> *qlist = new QList<qint64>;
+
+  for (int i = 0; i < PyList_GET_SIZE(sipPy); ++i)
+  {
+    *qlist << PyLong_AsLongLong(PyList_GET_ITEM(sipPy, i));
+  }
+
+  *sipCppPtr = qlist;
+  return sipGetState(sipTransferObj);
+%End
+};
+SIPEOF
     echo 'Patch complete'
 
 # Configure ccache
