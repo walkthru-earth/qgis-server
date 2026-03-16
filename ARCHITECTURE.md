@@ -64,16 +64,25 @@ graph TB
 | QGIS | 3.44.7 | Built from source with Qt6 |
 | Qt | 6.4.2 | Ubuntu Noble default (patched, see below) |
 | Python | 3.12 | With PyQt6 bindings |
+| PyQt6/SIP | 6.6/6.8 | Ubuntu Noble default (patched, see below) |
 | GDAL | 3.12.2 | Multi-arch base image |
 | Ubuntu | 24.04 (Noble) | From GDAL base |
 
-### Qt 6.4 Compatibility Patches
+### Build & Runtime Compatibility Patches
 
-Ubuntu Noble ships Qt 6.4.2, but QGIS code assumes Qt 6.6+. The Dockerfile applies two patches at build time:
+Ubuntu Noble ships Qt 6.4.2 and PyQt6 6.6/SIP 6.8, but QGIS code assumes Qt 6.6+. The Dockerfile applies three patches at build time and additional runtime patches:
+
+#### Build-time patches
 
 1. **`qmetatype.h` static_assert removal** — Qt 6.4 enforces `sizeof(T)` on pointer types in `Q_PROPERTY` / `Q_DECLARE_METATYPE`, failing when the type is only forward-declared (e.g., `QList<QgsMapLayer*>`). Qt 6.6+ relaxed this assertion. We patch the system Qt header to match Qt 6.6+ behavior, fixing all affected QGIS headers at once.
 
 2. **`boundValueNames()` replacement** — `QSqlQuery::boundValueNames()` was added in Qt 6.6. QGIS uses it in `qgsauthconfigurationstoragedb.cpp` for debug logging only. We replace it with `QStringList()`.
+
+3. **SIP 6.8 `QList<qint64>` mapped type** — Ubuntu Noble's PyQt6 was built against Qt < 6.5 and lacks the `QList<qint64>` mapped type, causing SIP build failures when generating Python bindings. We append the missing definition to `conversions.sip`.
+
+#### Runtime patches
+
+- **`fix_headless_imports.py`** — When QGIS is built with `WITH_GUI=OFF`, several modules still try to import from `qgis.gui` at load time, which fails because the GUI library is not present. This script wraps `qgis.gui` imports in try/except blocks in `qgis/utils.py` and `processing/tools/dataobjects.py` so the processing plugin loads correctly in headless mode.
 
 ### Why Not Upgrade Qt?
 
@@ -90,7 +99,7 @@ We investigated upgrading Qt on Ubuntu Noble. None of the available options are 
 
 **QGIS upstream doesn't use PPAs either** — they simply build on Ubuntu 25.10 (Questing) which ships Qt 6.9.2 from stock repos.
 
-The two patches we apply are minimal, well-understood, and forward-compatible (they replicate behavior already present in Qt 6.6+). See [Future Work](#future-work) for the plan to drop them.
+The build-time patches we apply are minimal, well-understood, and forward-compatible (they replicate behavior already present in Qt 6.6+). See [Future Work](#future-work) for the plan to drop them.
 
 ### GeoParquet Support (GDAL Plugin)
 
@@ -184,7 +193,7 @@ cmake .. \
     -DWITH_GUI=OFF \
     -DWITH_3D=OFF \
     -DWITH_PDAL=OFF \
-    -DWITH_BINDINGS=OFF \           # No Python bindings
+    -DWITH_BINDINGS=ON \            # Python bindings for qgis_process + PyQGIS
     -DBUILD_TESTING=OFF \
     -DENABLE_TESTS=OFF
 ```
@@ -513,6 +522,10 @@ qgis-server/
 │   └── usr/local/bin/
 │       ├── start-server         # Entry point
 │       └── qgis-mapserv-wrapper # FCGI wrapper
+├── patches/
+│   ├── apply.sh                 # Build-time patch script
+│   ├── fix_headless_imports.py  # Runtime headless GUI import patches
+│   └── qlist_qint64.sip        # SIP mapped type for QList<qint64>
 ├── tests/
 │   └── data/                    # Test project files
 ├── Dockerfile                   # Multi-stage build
@@ -595,11 +608,13 @@ When the GDAL project releases a base image on **Ubuntu 25.04 (Plucky)** or late
 
 1. Update the `GDAL_VERSION` / base image to the newer Ubuntu variant
 2. Remove both Qt patches from the Dockerfile (the `qmetatype.h` patch and the `boundValueNames()` patch)
-3. Benefit from stock Qt 6.8+ which has native support for all the features QGIS requires
+3. Remove the SIP `QList<qint64>` mapped-type patch (`patches/qlist_qint64.sip`) — Qt 6.5+ / PyQt6 6.8+ includes this type natively
+4. Remove the headless GUI import patches (`patches/fix_headless_imports.py`) — PyQt6 6.8+ resolves the import issues when built with `WITH_GUI=OFF`
+5. Benefit from stock Qt 6.8+ which has native support for all the features QGIS requires
 
 | Ubuntu Version | Qt Version | Patches Needed | GDAL Base Available |
 |---------------|-----------|---------------|-------------------|
-| 24.04 Noble | 6.4.2 | Yes (2 patches) | Yes (current) |
+| 24.04 Noble | 6.4.2 | Yes (3 build + runtime) | Yes (current) |
 | 25.04 Plucky | 6.8.3 | No | Not yet |
 | 25.10 Questing | 6.9.2 | No | Not yet |
 

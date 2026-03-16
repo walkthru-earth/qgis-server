@@ -8,7 +8,7 @@ Production-ready QGIS Server Docker image with multi-architecture support.
 - **Multiple Server Modes**: Apache, Lighttpd, or spawn-fcgi
 - **Production Ready**: Healthchecks, non-root user support, read-only filesystem
 - **GeoParquet Support**: Read/write GeoParquet via standalone GDAL plugin (Apache Arrow 23.0.1)
-- **Processing CLI**: `qgis_process` with 200+ native algorithms + PyQGIS scripting
+- **Processing CLI**: `qgis_process` with 240+ native C++ algorithms, Python processing plugin, and PyQGIS scripting
 - **Latest Stack**: GDAL 3.12.2, Ubuntu Noble
 
 ### Architecture Details
@@ -171,9 +171,10 @@ make build-server QGIS_VERSION=final-3_44_7
 │                      Server Stage                            │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │ Apache2 / Lighttpd / spawn-fcgi                         ││
-│  │ QGIS Server FCGI binary                                 ││
+│  │ QGIS Server FCGI binary + qgis_process CLI              ││
 │  │ Qt6 Runtime Libraries                                   ││
-│  │ Python 3 + PyQt6                                        ││
+│  │ Python 3 + PyQt6 + Processing Plugin                    ││
+│  │ GDAL GeoParquet Plugin (Apache Arrow)                   ││
 │  └─────────────────────────────────────────────────────────┘│
 ├─────────────────────────────────────────────────────────────┤
 │                      Base: GDAL 3.12.2                       │
