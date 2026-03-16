@@ -97,16 +97,15 @@ WORKDIR /src
 RUN git clone --depth=1 --branch=${QGIS_VERSION} https://github.com/qgis/QGIS.git .
 
 # Patches for Qt 6.4 compatibility (Ubuntu Noble ships Qt 6.4, some code needs Qt 6.6+)
-RUN echo 'Patching QGIS for Qt 6.4 compatibility...' && \
+RUN echo 'Patching for Qt 6.4 compatibility...' && \
     # 1. boundValueNames() requires Qt 6.6+ — replace with empty QStringList (debug logging only)
     sed -i 's/query->boundValueNames()/QStringList()/g' \
         src/core/auth/qgsauthconfigurationstoragedb.cpp && \
-    # 2. Qt 6.4 MOC requires full type for Q_PROPERTY / Q_DECLARE_METATYPE with pointer types.
-    #    qgsmaplayermodel.h and qgsmaplayerproxymodel.h forward-declare QgsMapLayer but MOC
-    #    needs sizeof(QgsMapLayer) — add the missing include.
-    sed -i 's|^class QgsMapLayer;|#include "qgsmaplayer.h"|' \
-        src/core/qgsmaplayermodel.h \
-        src/core/qgsmaplayerproxymodel.h && \
+    # 2. Qt 6.4 MOC enforces sizeof(T) on pointer types in Q_PROPERTY / Q_DECLARE_METATYPE,
+    #    failing when the type is only forward-declared. Qt 6.6+ relaxed this to a no-op.
+    #    Patch the system Qt header to match Qt 6.6+ behavior — fixes all QGIS headers at once.
+    find /usr/include -name 'qmetatype.h' -path '*/qt6/*' -exec \
+        sed -i 's/static_assert(sizeof(T), "Type argument of Q_PROPERTY or Q_DECLARE_METATYPE(T\*) must be fully defined");/\/\/ static_assert removed for Qt 6.4 compat (relaxed in Qt 6.6+)/g' {} \; && \
     echo 'Patch complete'
 
 # Configure ccache
