@@ -87,7 +87,15 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         libsqlite3-mod-spatialite \
         libzip-dev \
         libzstd-dev \
-        protobuf-compiler
+        protobuf-compiler \
+        # Python bindings (for qgis_process + PyQGIS)
+        python3-dev \
+        python3-sip-dev \
+        sip-tools \
+        pyqt6-dev \
+        pyqt6-dev-tools \
+        python3-pyqt6 \
+        python3-pyqt6.sip
 
 # Remove broken PROJ cmake files from GDAL base image
 RUN rm -rf /usr/local/lib/cmake/proj
@@ -130,7 +138,7 @@ RUN --mount=type=cache,target=/ccache,id=ccache-${TARGETARCH} \
         -DWITH_GUI=OFF \
         -DWITH_3D=OFF \
         -DWITH_PDAL=OFF \
-        -DWITH_BINDINGS=OFF \
+        -DWITH_BINDINGS=ON \
         -DBUILD_TESTING=OFF \
         -DENABLE_TESTS=OFF && \
     ninja -j$(nproc) && \
@@ -229,6 +237,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         xfonts-scalable \
         fontconfig \
         fonts-dejavu-core \
+        # Python bindings runtime (for qgis_process + PyQGIS)
+        python3-pyqt6 \
+        python3-pyqt6.sip \
+        python3-pyqt6.qtsvg \
+        python3-pyqt6.qtpositioning \
+        python3-pyqt6.qtserialport \
+        python3-sip \
         # Utilities
         xvfb \
         xauth && \
@@ -248,7 +263,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # =============================================================================
 FROM runtime AS server
 
-# Copy compiled QGIS from builder
+# Copy compiled QGIS from builder (includes Python bindings + processing plugin)
 COPY --from=builder /usr/local/bin /usr/local/bin/
 COPY --from=builder /usr/local/lib /usr/local/lib/
 COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
@@ -302,7 +317,8 @@ ENV FCGID_MAX_REQUESTS_PER_PROCESS=1000 \
 ENV QGIS_SERVER_LOG_STDERR=1 \
     QGIS_CUSTOM_CONFIG_PATH=/tmp \
     QGIS_PLUGINPATH=/var/www/plugins \
-    PYTHONPATH=/usr/local/share/qgis/python/:/var/www/plugins/
+    QGIS_PREFIX_PATH=/usr/local \
+    PYTHONPATH=/usr/local/lib/python3/dist-packages:/usr/local/share/qgis/python/:/var/www/plugins/
 
 # Configure Apache
 RUN a2enmod fcgid headers status && \

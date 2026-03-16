@@ -324,6 +324,20 @@ jobs:
           docker run --rm ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
             ogrinfo --formats | grep -q "Parquet" && echo "GeoParquet driver OK" || { echo "GeoParquet driver NOT loaded"; exit 1; }
 
+      - name: Test qgis_process and PyQGIS bindings
+        run: |
+          # Test qgis_process lists algorithms (native + processing)
+          ALGO_COUNT=$(docker run --rm -e QT_QPA_PLATFORM=offscreen \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
+            qgis_process list 2>/dev/null | grep -c ':')
+          echo "Available algorithms: $ALGO_COUNT"
+          [ "$ALGO_COUNT" -gt 200 ] && echo "qgis_process OK" || { echo "Too few algorithms: $ALGO_COUNT"; exit 1; }
+
+          # Test PyQGIS Python imports
+          docker run --rm -e QT_QPA_PLATFORM=offscreen \
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
+            python3 -c "from qgis.core import QgsApplication; print('PyQGIS OK')"
+
       - name: Test with WFS-only project
         run: |
           docker run --rm -d --name qgis-test-wfs \
