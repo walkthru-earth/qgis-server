@@ -87,10 +87,23 @@ section "GDAL Raster Drivers"
 RASTER_DRIVERS=$(gdalinfo --formats 2>/dev/null | tail -n +2)
 RASTER_COUNT=$(echo "$RASTER_DRIVERS" | wc -l)
 info "Total raster drivers: $RASTER_COUNT"
-md "| ℹ️ | Total raster drivers: **$RASTER_COUNT** |"
 
-# Key raster drivers
-for drv in GTiff COG VRT PNG JPEG WEBP Zarr netCDF HDF5 MBTiles GPKG WMS WMTS; do
+# All raster drivers present — list them in the markdown report
+RASTER_NAMES=$(echo "$RASTER_DRIVERS" | sed 's/^ *//' | cut -d' ' -f1 | sort | tr '\n' ', ' | sed 's/,$//')
+md "| ℹ️ | **$RASTER_COUNT raster drivers** |"
+
+# Critical raster drivers (must have)
+for drv in GTiff COG VRT PNG JPEG Zarr GPKG WMS WMTS; do
+    if echo "$RASTER_DRIVERS" | grep -qiw "$drv"; then
+        pass "Raster: $drv"
+    else
+        fail "Raster: $drv (CRITICAL)"
+        CRITICAL_FAIL=1
+    fi
+done
+
+# Nice-to-have raster drivers
+for drv in WEBP MBTiles JP2OpenJPEG GRIB PDF PostGISRaster STACIT STACTA WCS; do
     if echo "$RASTER_DRIVERS" | grep -qiw "$drv"; then
         pass "Raster: $drv"
     else
@@ -98,21 +111,60 @@ for drv in GTiff COG VRT PNG JPEG WEBP Zarr netCDF HDF5 MBTiles GPKG WMS WMTS; d
     fi
 done
 
+# Expected missing (ubuntu-small)
+for drv in netCDF HDF5; do
+    if echo "$RASTER_DRIVERS" | grep -qiw "$drv"; then
+        pass "Raster: $drv"
+    else
+        info "Raster: $drv (not in ubuntu-small)"
+    fi
+done
+
+# Full driver list in collapsible markdown
+md ""
+md "<details><summary>All $RASTER_COUNT raster drivers</summary>"
+md ""
+md "\`\`\`"
+md "$RASTER_NAMES"
+md "\`\`\`"
+md "</details>"
+
 section "GDAL Vector Drivers"
 
 VECTOR_DRIVERS=$(ogrinfo --formats 2>/dev/null | tail -n +2)
 VECTOR_COUNT=$(echo "$VECTOR_DRIVERS" | wc -l)
 info "Total vector drivers: $VECTOR_COUNT"
-md "| ℹ️ | Total vector drivers: **$VECTOR_COUNT** |"
 
-# Key vector drivers
-for drv in GPKG "ESRI Shapefile" GeoJSON FlatGeobuf Parquet CSV MVT PostgreSQL WFS ODS XLSX PMTiles GML KML; do
+VECTOR_NAMES=$(echo "$VECTOR_DRIVERS" | sed 's/^ *//' | cut -d' ' -f1 | sort | tr '\n' ', ' | sed 's/,$//')
+md "| ℹ️ | **$VECTOR_COUNT vector drivers** |"
+
+# Critical vector drivers (must have)
+for drv in GPKG "ESRI Shapefile" GeoJSON FlatGeobuf Parquet CSV PostgreSQL WFS GML; do
+    if echo "$VECTOR_DRIVERS" | grep -qi "$drv"; then
+        pass "Vector: $drv"
+    else
+        fail "Vector: $drv (CRITICAL)"
+        CRITICAL_FAIL=1
+    fi
+done
+
+# Nice-to-have vector drivers
+for drv in ADBC MVT PMTiles ODS XLSX KML JSONFG GeoJSONSeq GPX OSM SQLite DXF OAPIF MBTiles OpenFileGDB PDF; do
     if echo "$VECTOR_DRIVERS" | grep -qi "$drv"; then
         pass "Vector: $drv"
     else
         warn "Vector: $drv (not available)"
     fi
 done
+
+# Full driver list in collapsible markdown
+md ""
+md "<details><summary>All $VECTOR_COUNT vector drivers</summary>"
+md ""
+md "\`\`\`"
+md "$VECTOR_NAMES"
+md "\`\`\`"
+md "</details>"
 
 # =============================================================================
 # 3. GDAL CLI TOOLS
