@@ -244,8 +244,8 @@ fi
 # =============================================================================
 section "qgis_process Algorithms"
 
-# Get algorithm list once (qgis_process may crash on shutdown, that's OK)
-ALGO_LIST=$(qgis_process list 2>&1 || true)
+# Get algorithm list once (timeout guards against shutdown hang)
+ALGO_LIST=$(timeout 60 qgis_process list 2>&1 || true)
 
 NATIVE_COUNT=$(echo "$ALGO_LIST" | grep -c "native:" || true)
 GDAL_COUNT=$(echo "$ALGO_LIST" | grep -c "gdal:" || true)
@@ -278,8 +278,8 @@ fi
 section "qgis_process Execution"
 
 if [ -f "$TEST_DATA/testlayer.shp" ]; then
-    # Buffer test
-    qgis_process run native:buffer -- \
+    # Buffer test (timeout guards against qgis_process hanging on shutdown crash)
+    timeout 60 qgis_process run native:buffer -- \
         INPUT="$TEST_DATA/testlayer.shp" DISTANCE=1 OUTPUT=/tmp/buffered.gpkg >/dev/null 2>&1 || true
     if [ -f /tmp/buffered.gpkg ]; then
         BUF_COUNT=$(ogrinfo -so /tmp/buffered.gpkg -al 2>/dev/null | grep -oP 'Feature Count: \K[0-9]+' || echo 0)
