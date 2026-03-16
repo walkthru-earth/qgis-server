@@ -62,10 +62,35 @@ graph TB
 | Component | Version | Notes |
 |-----------|---------|-------|
 | QGIS | 3.44.7 | Built from source with Qt6 |
-| Qt | 6.4 | Ubuntu Noble default |
+| Qt | 6.4.2 | Ubuntu Noble default (patched, see below) |
 | Python | 3.12 | With PyQt6 bindings |
 | GDAL | 3.12.2 | Multi-arch base image |
 | Ubuntu | 24.04 (Noble) | From GDAL base |
+
+### Qt 6.4 Compatibility Patches
+
+Ubuntu Noble ships Qt 6.4.2, but QGIS code assumes Qt 6.6+. The Dockerfile applies two patches at build time:
+
+1. **`qmetatype.h` static_assert removal** — Qt 6.4 enforces `sizeof(T)` on pointer types in `Q_PROPERTY` / `Q_DECLARE_METATYPE`, failing when the type is only forward-declared (e.g., `QList<QgsMapLayer*>`). Qt 6.6+ relaxed this assertion. We patch the system Qt header to match Qt 6.6+ behavior, fixing all affected QGIS headers at once.
+
+2. **`boundValueNames()` replacement** — `QSqlQuery::boundValueNames()` was added in Qt 6.6. QGIS uses it in `qgsauthconfigurationstoragedb.cpp` for debug logging only. We replace it with `QStringList()`.
+
+### Why Not Upgrade Qt?
+
+We investigated upgrading Qt on Ubuntu Noble. None of the available options are viable:
+
+| Source | Qt Version | Status |
+|--------|-----------|--------|
+| Ubuntu 24.04 (Noble) stock | 6.4.2 | Current — needs patches |
+| `ppa:lopin/qt6-backports` | 6.8.3 | Only 12 of ~40 Qt packages; missing serialport, positioning, svg, 5compat. Mixing 6.4 + 6.8 modules breaks at link time |
+| `ppa:lengau/qt6-backports` | 6.9.2 | Only `qt6-base` — unusable alone |
+| KDE Neon repos | 6.9.2 | Full stack but designed for KDE desktop, high risk of conflicts |
+| Qt online installer / aqtinstall | Any | Installs to non-standard paths, adds ~500MB + complexity |
+| Build Qt from source | Any | Adds 1-2 hours per build |
+
+**QGIS upstream doesn't use PPAs either** — they simply build on Ubuntu 25.10 (Questing) which ships Qt 6.9.2 from stock repos.
+
+The two patches we apply are minimal, well-understood, and forward-compatible (they replicate behavior already present in Qt 6.6+). See [Future Work](#future-work) for the plan to drop them.
 
 ---
 
@@ -527,3 +552,25 @@ Built-in health check for orchestration:
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities || exit 1
 ```
+
+---
+
+## Future Work
+
+### Drop Qt 6.4 patches when GDAL base image moves to Ubuntu 25.04+
+
+The Qt 6.4 compatibility patches (see [Qt 6.4 Compatibility Patches](#qt-64-compatibility-patches)) exist only because the GDAL multi-arch base image (`ghcr.io/osgeo/gdal:ubuntu-small-*`) is built on Ubuntu 24.04 Noble, which ships Qt 6.4.2.
+
+When the GDAL project releases a base image on **Ubuntu 25.04 (Plucky)** or later, we can:
+
+1. Update the `GDAL_VERSION` / base image to the newer Ubuntu variant
+2. Remove both Qt patches from the Dockerfile (the `qmetatype.h` patch and the `boundValueNames()` patch)
+3. Benefit from stock Qt 6.8+ which has native support for all the features QGIS requires
+
+| Ubuntu Version | Qt Version | Patches Needed | GDAL Base Available |
+|---------------|-----------|---------------|-------------------|
+| 24.04 Noble | 6.4.2 | Yes (2 patches) | Yes (current) |
+| 25.04 Plucky | 6.8.3 | No | Not yet |
+| 25.10 Questing | 6.9.2 | No | Not yet |
+
+**Track this:** Watch the [GDAL Docker releases](https://github.com/OSGeo/gdal/tree/master/docker) for Ubuntu 25.04+ multi-arch images. Once available, the migration is straightforward — change the base image and delete the patch `RUN` block.
