@@ -92,6 +92,7 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         python3-dev \
         python3-sip-dev \
         sip-tools \
+        python3-pyqtbuild \
         pyqt6-dev \
         pyqt6-dev-tools \
         python3-pyqt6 \
