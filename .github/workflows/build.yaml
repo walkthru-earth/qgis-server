@@ -334,3 +334,23 @@ jobs:
           curl -sf "http://localhost:8081/ows?SERVICE=WFS&REQUEST=GetFeature&TYPENAME=testlayer&MAXFEATURES=1" | grep -q "testlayer" && echo "WFS-only project: GetFeature OK"
 
           docker stop qgis-test-wfs
+
+  # =============================================================================
+  # Cleanup old untagged GHCR versions
+  # =============================================================================
+  cleanup:
+    name: Cleanup Old GHCR Versions
+    needs: [create-manifest, test]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Delete old untagged versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: qgis-server
+          package-type: container
+          min-versions-to-keep: 2
+          delete-only-untagged-versions: true
