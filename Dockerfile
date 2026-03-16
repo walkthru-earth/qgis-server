@@ -153,10 +153,12 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         lighttpd \
         spawn-fcgi \
         # Qt6 runtime
+        libqt6concurrent6t64 \
         libqt6core6t64 \
         libqt6gui6t64 \
         libqt6widgets6t64 \
         libqt6network6t64 \
+        libqt6serialport6 \
         libqt6sql6t64 \
         libqt6sql6-sqlite \
         libqt6xml6t64 \
