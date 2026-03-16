@@ -102,6 +102,15 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # Remove broken PROJ cmake files from GDAL base image
 RUN rm -rf /usr/local/lib/cmake/proj
 
+# Build QWT 6.3.0 for Qt6 (not packaged for Qt6 on Ubuntu Noble)
+WORKDIR /tmp/qwt
+RUN curl -sfL https://sourceforge.net/projects/qwt/files/qwt/6.3.0/qwt-6.3.0.tar.bz2 | tar xj --strip-components=1 && \
+    qmake6 qwt.pro && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    rm -rf /tmp/qwt
+
 # Clone QGIS repository
 WORKDIR /src
 RUN git clone --depth=1 --branch=${QGIS_VERSION} https://github.com/qgis/QGIS.git .
@@ -131,6 +140,8 @@ RUN --mount=type=cache,target=/ccache,id=ccache-${TARGETARCH} \
         -DWITH_DESKTOP=OFF \
         -DWITH_GUI=ON \
         -DWITH_3D=OFF \
+        -DQWT_INCLUDE_DIR=/usr/local/qwt-6.3.0/include \
+        -DQWT_LIBRARY=/usr/local/qwt-6.3.0/lib/libqwt.so \
         -DWITH_PDAL=OFF \
         -DWITH_BINDINGS=ON \
         -DBUILD_TESTING=OFF \
@@ -266,6 +277,9 @@ FROM runtime AS server
 COPY --from=builder /usr/local/bin /usr/local/bin/
 COPY --from=builder /usr/local/lib /usr/local/lib/
 COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
+
+# Copy QWT runtime library from builder
+COPY --from=builder /usr/local/qwt-6.3.0/lib/libqwt.so* /usr/local/lib/
 
 # Copy GeoParquet GDAL plugin into the existing plugins directory
 COPY --from=parquet-builder /gdal-src/build-parquet/ogr_Parquet.so /tmp/ogr_Parquet.so

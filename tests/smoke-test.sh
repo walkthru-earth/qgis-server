@@ -244,8 +244,8 @@ fi
 # =============================================================================
 section "qgis_process Algorithms"
 
-# Get algorithm list once (timeout guards against shutdown hang)
-ALGO_LIST=$(timeout 60 qgis_process list 2>&1 || true)
+# Get algorithm list once (timeout for safety)
+ALGO_LIST=$(timeout 120 qgis_process list 2>&1 || true)
 
 NATIVE_COUNT=$(echo "$ALGO_LIST" | grep -c "native:" || true)
 GDAL_COUNT=$(echo "$ALGO_LIST" | grep -c "gdal:" || true)
@@ -278,8 +278,8 @@ fi
 section "qgis_process Execution"
 
 if [ -f "$TEST_DATA/testlayer.shp" ]; then
-    # Buffer test (timeout guards against qgis_process hanging on shutdown crash)
-    timeout 60 qgis_process run native:buffer -- \
+    # Buffer test (WITH_GUI=ON + QT_QPA_PLATFORM=offscreen)
+    timeout 120 qgis_process run native:buffer -- \
         INPUT="$TEST_DATA/testlayer.shp" DISTANCE=1 OUTPUT=/tmp/buffered.gpkg >/dev/null 2>&1 || true
     if [ -f /tmp/buffered.gpkg ]; then
         BUF_COUNT=$(ogrinfo -so /tmp/buffered.gpkg -al 2>/dev/null | grep -oP 'Feature Count: \K[0-9]+' || echo 0)
@@ -342,12 +342,8 @@ for mod in PyQt6.QtCore PyQt6.QtGui PyQt6.QtWidgets PyQt6.QtSvg PyQt6.QtNetwork;
     fi
 done
 
-# Processing plugin Python import
-if python3 -c "from qgis.gui import QgsGui" >/dev/null 2>&1; then
-    pass "qgis.gui"
-else
-    warn "qgis.gui (not available)"
-fi
+# qgis.gui (WITH_GUI=ON, QWT 6.3.0 built from source)
+critical "qgis.gui" python3 -c "from qgis.gui import QgsGui"
 
 # Processing plugin (validated via qgis_process algorithm counts above)
 if [ "$GDAL_COUNT" -gt 0 ]; then

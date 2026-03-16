@@ -82,7 +82,7 @@ Ubuntu Noble ships Qt 6.4.2 and PyQt6 6.6/SIP 6.8, but QGIS code assumes Qt 6.6+
 
 #### Runtime patches
 
-- **`WITH_GUI=ON` with headless runtime** — QGIS is built with GUI support enabled because `qgis_process` and the processing plugin depend on `qgis_gui` at the C++ level. The image runs headless via `QT_QPA_PLATFORM=offscreen` — no display server is needed. This is the same approach used by the official QGIS Docker images.
+- **QWT 6.3.0 built from source** — Ubuntu Noble only packages QWT for Qt5. We build QWT 6.3.0 from source with Qt6 in the builder stage, enabling `WITH_GUI=ON` so `qgis_process run` and the full processing plugin work correctly. The image runs headless via `QT_QPA_PLATFORM=offscreen`.
 
 ### Why Not Upgrade Qt?
 
@@ -190,7 +190,7 @@ cmake .. \
     -DWITH_SERVER=ON \
     -DWITH_SERVER_LANDINGPAGE_WEBAPP=OFF \
     -DWITH_DESKTOP=OFF \            # Server only
-    -DWITH_GUI=ON \              # GUI lib needed for qgis_process (runs headless with QT_QPA_PLATFORM=offscreen)
+    -DWITH_GUI=ON \              # QWT 6.3.0 built from source for Qt6
     -DWITH_3D=OFF \
     -DWITH_PDAL=OFF \
     -DWITH_BINDINGS=ON \            # Python bindings for qgis_process + PyQGIS
@@ -524,6 +524,7 @@ qgis-server/
 │       └── qgis-mapserv-wrapper # FCGI wrapper
 ├── patches/
 │   ├── apply.sh                 # Build-time patch script (Qt 6.4 + SIP compat)
+│   ├── gui_stub.py              # Stub qgis.gui (kept for reference, not used with WITH_GUI=ON)
 │   └── qlist_qint64.sip        # SIP mapped type for QList<qint64>
 ├── tests/
 │   └── data/                    # Test project files
