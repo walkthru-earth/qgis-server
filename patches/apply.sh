@@ -23,6 +23,18 @@ echo "  [2/3] Patched qmetatype.h static_assert for Qt 6.4"
 # 3. SIP 6.8: Missing QList<qint64> mapped type (needs Qt 6.5+ PyQt6)
 #    Append the mapped type to conversions.sip
 cat "${SCRIPT_DIR}/qlist_qint64.sip" >> "${QGIS_SRC}/python/PyQt6/core/conversions.sip"
-echo "  [3/3] Added QList<qint64> SIP mapped type"
+echo "  [3/4] Added QList<qint64> SIP mapped type"
+
+# 4. SIP 6.8: QgsProcessingGui class missing %TypeHeaderCode
+#    The auto-generated SIP file has an empty class without the header include,
+#    causing SIP to generate code referencing ::QgsProcessingGui without defining it
+SIP_FILE="${QGIS_SRC}/python/gui/auto_generated/processing/qgsprocessinggui.sip.in"
+sed -i 's/class QgsProcessingGui {/class QgsProcessingGui {\n\n%TypeHeaderCode\n#include "qgsprocessinggui.h"\n%End/' "$SIP_FILE"
+# Also patch the PyQt6 variant if it exists
+SIP_FILE_QT6="${QGIS_SRC}/python/PyQt6/gui/auto_generated/processing/qgsprocessinggui.sip.in"
+if [ -f "$SIP_FILE_QT6" ]; then
+    sed -i 's/class QgsProcessingGui {/class QgsProcessingGui {\n\n%TypeHeaderCode\n#include "qgsprocessinggui.h"\n%End/' "$SIP_FILE_QT6"
+fi
+echo "  [4/4] Added QgsProcessingGui %TypeHeaderCode for SIP"
 
 echo "All build patches applied successfully"
