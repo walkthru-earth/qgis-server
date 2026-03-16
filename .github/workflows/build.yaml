@@ -347,14 +347,14 @@ jobs:
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
             qgis_process list 2>&1 | grep -c 'native:')
           echo "Available native algorithms: $ALGO_COUNT"
-          [ "$ALGO_COUNT" -gt 100 ] && echo "qgis_process OK" || { echo "Too few algorithms: $ALGO_COUNT"; exit 1; }
+          [ "$ALGO_COUNT" -gt 200 ] && echo "qgis_process OK" || { echo "Too few algorithms: $ALGO_COUNT"; exit 1; }
 
-          # Test processing plugin algorithms (qgis: prefix)
-          QGIS_ALGO_COUNT=$(docker run --rm -e QT_QPA_PLATFORM=offscreen \
+          # Test GDAL processing algorithms (loaded via processing plugin)
+          GDAL_ALGO_COUNT=$(docker run --rm -e QT_QPA_PLATFORM=offscreen \
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            qgis_process list 2>&1 | grep -c 'qgis:')
-          echo "Available qgis: algorithms: $QGIS_ALGO_COUNT"
-          [ "$QGIS_ALGO_COUNT" -gt 50 ] && echo "Processing plugin OK" || { echo "Too few qgis: algorithms: $QGIS_ALGO_COUNT"; exit 1; }
+            qgis_process list 2>&1 | grep -c 'gdal:')
+          echo "Available gdal: algorithms: $GDAL_ALGO_COUNT"
+          [ "$GDAL_ALGO_COUNT" -gt 30 ] && echo "Processing plugin OK (GDAL provider loaded)" || { echo "Too few gdal: algorithms: $GDAL_ALGO_COUNT"; exit 1; }
 
           # Run a native algorithm to verify qgis_process actually works
           docker run --rm -e QT_QPA_PLATFORM=offscreen \

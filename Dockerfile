@@ -230,13 +230,17 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         xfonts-scalable \
         fontconfig \
         fonts-dejavu-core \
-        # Python bindings runtime (for qgis_process + PyQGIS)
+        # Python bindings runtime (for qgis_process + PyQGIS + processing plugin)
         python3-pyqt6 \
         python3-pyqt6.sip \
+        python3-pyqt6.qsci \
         python3-pyqt6.qtsvg \
         python3-pyqt6.qtpositioning \
         python3-pyqt6.qtserialport \
         python3-sip \
+        python3-yaml \
+        python3-psycopg2 \
+        pyqt6-dev-tools \
         # Utilities
         xvfb \
         xauth && \
@@ -261,10 +265,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin/
 COPY --from=builder /usr/local/lib /usr/local/lib/
 COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
 
-# Patch GUI imports for headless operation (WITH_GUI=OFF)
-COPY patches/fix_headless_imports.py /tmp/fix_headless_imports.py
-RUN python3 /tmp/fix_headless_imports.py /usr/local/share/qgis/python && \
-    rm /tmp/fix_headless_imports.py
+# Install stub qgis.gui module for headless operation (WITH_GUI=OFF)
+# This allows the processing plugin to load without the GUI C extension
+COPY patches/gui_stub.py /usr/local/share/qgis/python/qgis/gui.py
 
 # Copy GeoParquet GDAL plugin into the existing plugins directory
 COPY --from=parquet-builder /gdal-src/build-parquet/ogr_Parquet.so /tmp/ogr_Parquet.so

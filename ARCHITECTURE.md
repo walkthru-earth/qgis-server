@@ -82,7 +82,7 @@ Ubuntu Noble ships Qt 6.4.2 and PyQt6 6.6/SIP 6.8, but QGIS code assumes Qt 6.6+
 
 #### Runtime patches
 
-- **`fix_headless_imports.py`** — When QGIS is built with `WITH_GUI=OFF`, several modules still try to import from `qgis.gui` at load time, which fails because the GUI library is not present. This script wraps `qgis.gui` imports in try/except blocks in `qgis/utils.py` and `processing/tools/dataobjects.py` so the processing plugin loads correctly in headless mode.
+- **`gui_stub.py`** — When QGIS is built with `WITH_GUI=OFF`, the `qgis.gui` C extension doesn't exist, but the processing plugin and its dependencies import many GUI classes at load time. Instead of patching individual files, we install a stub `qgis/gui.py` module that uses a metaclass-based `_Stub` class to absorb any attribute access, instantiation, or call. This allows all `from qgis.gui import X` statements to succeed silently, enabling the full processing plugin (280+ native + 57 GDAL algorithms) to load in headless mode.
 
 ### Why Not Upgrade Qt?
 
@@ -524,7 +524,7 @@ qgis-server/
 │       └── qgis-mapserv-wrapper # FCGI wrapper
 ├── patches/
 │   ├── apply.sh                 # Build-time patch script
-│   ├── fix_headless_imports.py  # Runtime headless GUI import patches
+│   ├── gui_stub.py              # Stub qgis.gui module for headless builds
 │   └── qlist_qint64.sip        # SIP mapped type for QList<qint64>
 ├── tests/
 │   └── data/                    # Test project files
@@ -609,7 +609,7 @@ When the GDAL project releases a base image on **Ubuntu 25.04 (Plucky)** or late
 1. Update the `GDAL_VERSION` / base image to the newer Ubuntu variant
 2. Remove both Qt patches from the Dockerfile (the `qmetatype.h` patch and the `boundValueNames()` patch)
 3. Remove the SIP `QList<qint64>` mapped-type patch (`patches/qlist_qint64.sip`) — Qt 6.5+ / PyQt6 6.8+ includes this type natively
-4. Remove the headless GUI import patches (`patches/fix_headless_imports.py`) — PyQt6 6.8+ resolves the import issues when built with `WITH_GUI=OFF`
+4. Remove the GUI stub module (`patches/gui_stub.py`) — with `WITH_GUI=ON` or when the GUI C extension is available, the stub becomes unnecessary
 5. Benefit from stock Qt 6.8+ which has native support for all the features QGIS requires
 
 | Ubuntu Version | Qt Version | Patches Needed | GDAL Base Available |
