@@ -17,11 +17,17 @@ set -o pipefail
 PASS=0; FAIL=0; WARN=0; TOTAL=0
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 
-pass()     { ((PASS++)); ((TOTAL++)); echo -e "  ${GREEN}✓${NC} $1"; }
-fail()     { ((FAIL++)); ((TOTAL++)); echo -e "  ${RED}✗${NC} $1"; }
-warn()     { ((WARN++)); ((TOTAL++)); echo -e "  ${YELLOW}⚠${NC} $1"; }
+# Markdown report file (for GitHub Actions job summary)
+MD_REPORT="${SMOKE_TEST_REPORT:-/tmp/smoke-test-summary.md}"
+: > "$MD_REPORT"
+
+md() { echo "$@" >> "$MD_REPORT"; }
+
+pass()     { ((PASS++)); ((TOTAL++)); echo -e "  ${GREEN}✓${NC} $1"; md "| ✅ | $1 |"; }
+fail()     { ((FAIL++)); ((TOTAL++)); echo -e "  ${RED}✗${NC} $1"; md "| ❌ | $1 |"; }
+warn()     { ((WARN++)); ((TOTAL++)); echo -e "  ${YELLOW}⚠${NC} $1"; md "| ⚠️ | $1 |"; }
 info()     { echo -e "  ${CYAN}·${NC} $1"; }
-section()  { echo -e "\n${BOLD}[$1]${NC}"; }
+section()  { echo -e "\n${BOLD}[$1]${NC}"; md ""; md "### $1"; md ""; md "| Status | Check |"; md "|--------|-------|"; }
 
 # Critical test — failure means exit 1
 critical() {
@@ -43,10 +49,13 @@ echo -e "${BOLD}QGIS Server Docker Image — Smoke Test${NC}"
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "==========================================="
 
+md "## 🔍 Smoke Test Report"
+md "_$(date -u +%Y-%m-%dT%H:%M:%SZ)_"
+
 # =============================================================================
 # 1. VERSIONS
 # =============================================================================
-section "Versions"
+echo -e "\n${BOLD}[Versions]${NC}"
 
 GDAL_VER=$(gdalinfo --version 2>/dev/null | head -1)
 info "GDAL: $GDAL_VER"
@@ -60,6 +69,16 @@ info "Python: $PYTHON_VER"
 PROJ_VER=$(projinfo 2>&1 | head -1 || echo "unknown")
 info "PROJ: $PROJ_VER"
 
+md ""
+md "### Versions"
+md ""
+md "| Component | Version |"
+md "|-----------|---------|"
+md "| GDAL | ${GDAL_VER} |"
+md "| QGIS Server | ${QGIS_VER} |"
+md "| Python | ${PYTHON_VER} |"
+md "| PROJ | ${PROJ_VER} |"
+
 # =============================================================================
 # 2. GDAL DRIVERS
 # =============================================================================
@@ -68,6 +87,7 @@ section "GDAL Raster Drivers"
 RASTER_DRIVERS=$(gdalinfo --formats 2>/dev/null | tail -n +2)
 RASTER_COUNT=$(echo "$RASTER_DRIVERS" | wc -l)
 info "Total raster drivers: $RASTER_COUNT"
+md "| ℹ️ | Total raster drivers: **$RASTER_COUNT** |"
 
 # Key raster drivers
 for drv in GTiff COG VRT PNG JPEG WEBP Zarr netCDF HDF5 MBTiles GPKG WMS WMTS; do
@@ -83,6 +103,7 @@ section "GDAL Vector Drivers"
 VECTOR_DRIVERS=$(ogrinfo --formats 2>/dev/null | tail -n +2)
 VECTOR_COUNT=$(echo "$VECTOR_DRIVERS" | wc -l)
 info "Total vector drivers: $VECTOR_COUNT"
+md "| ℹ️ | Total vector drivers: **$VECTOR_COUNT** |"
 
 # Key vector drivers
 for drv in GPKG "ESRI Shapefile" GeoJSON FlatGeobuf Parquet CSV MVT PostgreSQL WFS ODS XLSX PMTiles GML KML; do
@@ -179,6 +200,7 @@ GDAL_COUNT=$(echo "$ALGO_LIST" | grep -c "gdal:" || true)
 TOTAL_ALGO=$((NATIVE_COUNT + GDAL_COUNT))
 
 info "native: $NATIVE_COUNT, gdal: $GDAL_COUNT, total: $TOTAL_ALGO"
+md "| ℹ️ | native: **$NATIVE_COUNT**, gdal: **$GDAL_COUNT**, total: **$TOTAL_ALGO** |"
 
 if [ "$NATIVE_COUNT" -gt 200 ]; then
     pass "Native algorithms ($NATIVE_COUNT > 200)"
@@ -318,10 +340,15 @@ echo -e "  ${RED}Failed:${NC}  $FAIL"
 echo -e "  Total:   $TOTAL"
 echo ""
 
+md ""
+md "---"
+md ""
 if [ "$CRITICAL_FAIL" -eq 1 ]; then
+    md "### ❌ FAILED — $PASS passed, $WARN warned, $FAIL failed (of $TOTAL)"
     echo -e "${RED}${BOLD}RESULT: FAILED${NC} — critical tests did not pass"
     exit 1
 else
+    md "### ✅ PASSED — $PASS passed, $WARN warned, $FAIL failed (of $TOTAL)"
     echo -e "${GREEN}${BOLD}RESULT: PASSED${NC} — all critical tests OK"
     exit 0
 fi

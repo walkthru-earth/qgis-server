@@ -323,9 +323,15 @@ jobs:
         run: |
           docker run --rm -e QT_QPA_PLATFORM=offscreen \
             -v ${{ github.workspace }}/tests:/tests:ro \
+            -v /tmp/smoke-report:/tmp/smoke-report \
             -e TEST_DATA=/tests/data \
+            -e SMOKE_TEST_REPORT=/tmp/smoke-report/summary.md \
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
             /tests/smoke-test.sh
+          # Append markdown report to GitHub Actions job summary
+          if [ -f /tmp/smoke-report/summary.md ]; then
+            cat /tmp/smoke-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Test with WFS-only project
         run: |
