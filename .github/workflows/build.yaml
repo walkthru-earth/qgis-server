@@ -319,55 +319,13 @@ jobs:
 
           docker stop qgis-test
 
-      - name: Test GDAL GeoParquet driver
+      - name: Smoke test (drivers, CLI, processing, bindings)
         run: |
-          # Verify Parquet driver is loaded
-          docker run --rm ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            ogrinfo --formats | grep -q "Parquet" && echo "GeoParquet driver OK" || { echo "GeoParquet driver NOT loaded"; exit 1; }
-
-          # Test optimized GeoParquet write (ZSTD, native types, bbox index) and read-back
-          docker run --rm \
-            -v ${{ github.workspace }}/tests/data:/data:ro \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            sh -c '
-              gdal vector convert /data/testlayer.shp /tmp/test.parquet \
-                --lco COMPRESSION=ZSTD \
-                --lco SORT_BY_BBOX=YES \
-                --lco WRITE_COVERING_BBOX=YES \
-                --lco USE_PARQUET_GEO_TYPES=YES && \
-              gdal vector info /tmp/test.parquet | grep -q "Feature Count" && \
-              echo "GeoParquet read/write OK (ZSTD + native types + bbox)"
-            ' \
-            || { echo "GeoParquet read/write FAILED"; exit 1; }
-
-      - name: Test qgis_process and PyQGIS bindings
-        run: |
-          # Single container run for all qgis_process tests (avoids ~15s startup per container)
           docker run --rm -e QT_QPA_PLATFORM=offscreen \
-            -v ${{ github.workspace }}/tests/data:/data:ro \
+            -v ${{ github.workspace }}/tests:/tests:ro \
+            -e TEST_DATA=/tests/data \
             ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            sh -c '
-              set -e
-              # Cache algorithm list (single qgis_process init)
-              ALGO_LIST=$(qgis_process list 2>&1 || true)
-
-              # Count native algorithms
-              NATIVE_COUNT=$(echo "$ALGO_LIST" | grep -c "native:" || true)
-              echo "Available native algorithms: $NATIVE_COUNT"
-              [ "$NATIVE_COUNT" -gt 200 ] && echo "qgis_process OK" || { echo "Too few native: $NATIVE_COUNT"; exit 1; }
-
-              # Count GDAL algorithms (loaded via processing plugin)
-              GDAL_COUNT=$(echo "$ALGO_LIST" | grep -c "gdal:" || true)
-              echo "Available gdal: algorithms: $GDAL_COUNT"
-              [ "$GDAL_COUNT" -gt 30 ] && echo "Processing plugin OK" || { echo "Too few gdal: $GDAL_COUNT"; exit 1; }
-
-              # Run a native algorithm end-to-end (ignore exit code — qgis_process may crash on shutdown)
-              qgis_process run native:buffer -- INPUT=/data/testlayer.shp DISTANCE=1 OUTPUT=/tmp/buffered.gpkg || true
-              [ -f /tmp/buffered.gpkg ] && echo "qgis_process run native:buffer OK" || { echo "Buffer output not created"; exit 1; }
-
-              # Test PyQGIS imports
-              python3 -c "from qgis.core import QgsApplication; print(\"PyQGIS OK\")"
-            '
+            /tests/smoke-test.sh
 
       - name: Test with WFS-only project
         run: |
