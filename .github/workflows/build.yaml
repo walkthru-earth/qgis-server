@@ -222,6 +222,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -262,6 +265,16 @@ jobs:
           docker buildx imagetools create "${TAGS[@]}" \
             "${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}@${{ needs.build-amd64.outputs.digest }}" \
             "${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}@${{ needs.build-arm64.outputs.digest }}"
+
+      - name: Update Docker Hub description
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE_NAME_DOCKER }}
+          readme-filepath: ./README.md
+          short-description: "QGIS Server Docker image — multi-arch (AMD64/ARM64), compiled from source with Qt6"
 
   # =============================================================================
   # Test Images
