@@ -296,8 +296,18 @@ jobs:
           curl -sf "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities" | grep -q "WMS_Capabilities" && echo "WMS GetCapabilities OK"
 
           # WMS GetMap — request a raster map image (landsat layer, extent ~17.9,30.1,18.1,30.3 in EPSG:4326)
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetMap&LAYERS=landsat&CRS=EPSG:4326&BBOX=30.15,17.92,30.26,18.05&WIDTH=256&HEIGHT=256&FORMAT=image/png&VERSION=1.3.0")
-          [ "$HTTP_CODE" = "200" ] && echo "WMS GetMap (raster) OK" || { echo "WMS GetMap failed with $HTTP_CODE"; exit 1; }
+          GETMAP_RESP=$(curl -s -w "\n%{http_code}" "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetMap&LAYERS=landsat&CRS=EPSG:4326&BBOX=30.15,17.92,30.26,18.05&WIDTH=256&HEIGHT=256&FORMAT=image/png&VERSION=1.3.0")
+          HTTP_CODE=$(echo "$GETMAP_RESP" | tail -1)
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "WMS GetMap (raster) OK"
+          else
+            echo "WMS GetMap failed with HTTP $HTTP_CODE"
+            echo "Response body:"
+            echo "$GETMAP_RESP" | head -20
+            echo "Container logs:"
+            docker logs qgis-test 2>&1 | tail -20
+            exit 1
+          fi
 
           # WFS GetCapabilities
           curl -sf "http://localhost:8080/ows?SERVICE=WFS&REQUEST=GetCapabilities" | grep -q "WFS_Capabilities" && echo "WFS GetCapabilities OK"
