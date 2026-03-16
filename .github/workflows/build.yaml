@@ -384,27 +384,3 @@ jobs:
           min-versions-to-keep: 2
           delete-only-untagged-versions: true
 
-      - name: Delete old untagged Docker Hub tags
-        if: vars.DOCKERHUB_USERNAME != ''
-        run: |
-          # Get auth token
-          TOKEN=$(curl -sf "https://hub.docker.com/v2/users/login/" \
-            -H "Content-Type: application/json" \
-            -d '{"username":"${{ vars.DOCKERHUB_USERNAME }}","password":"${{ secrets.DOCKERHUB_TOKEN }}"}' \
-            | jq -r '.token')
-
-          # List all tags
-          TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME_DOCKER }}/tags?page_size=100" \
-            -H "Authorization: Bearer ${TOKEN}" \
-            | jq -r '.results[].name')
-
-          # Delete tags that look like sha256 digests (untagged manifests)
-          for TAG in $TAGS; do
-            if [[ "$TAG" =~ ^sha- ]]; then
-              echo "Deleting Docker Hub tag: $TAG"
-              curl -sf -X DELETE \
-                "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME_DOCKER }}/tags/${TAG}/" \
-                -H "Authorization: Bearer ${TOKEN}" || true
-            fi
-          done
-          echo "Docker Hub cleanup complete"
