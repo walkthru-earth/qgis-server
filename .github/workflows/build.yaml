@@ -21,6 +21,16 @@ env:
   REGISTRY_DOCKER: docker.io
   IMAGE_NAME_GHCR: walkthru-earth/qgis-server
   IMAGE_NAME_DOCKER: walkthruearth/qgis-server
+  # Shared pre-runner script for Hetzner Cloud runners
+  HCLOUD_PRE_RUNNER_SCRIPT: |
+    apt-get update
+    apt-get install -y ca-certificates curl
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
+    apt-get update
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 permissions:
   contents: read
@@ -47,32 +57,26 @@ jobs:
           server_type: ccx33  # 8 dedicated x86 cores, 32GB RAM, 240GB SSD
           location: nbg1
           image: ubuntu-24.04
-          pre_runner_script: |
-            apt-get update
-            apt-get install -y ca-certificates curl
-            install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-            chmod a+r /etc/apt/keyrings/docker.asc
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
-            apt-get update
-            apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          pre_runner_script: ${{ env.HCLOUD_PRE_RUNNER_SCRIPT }}
 
   build-amd64:
     name: Build AMD64
     needs: create-runner-amd64
     runs-on: ${{ needs.create-runner-amd64.outputs.label }}
     timeout-minutes: 60
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY_GHCR }}
           username: ${{ github.actor }}
@@ -80,36 +84,27 @@ jobs:
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request' && vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY_DOCKER }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
-          tags: |
-            type=raw,value=build-amd64
-          flavor: |
-            latest=false
-
-      - name: Build and push AMD64
-        uses: docker/build-push-action@v6
+      - name: Build and push AMD64 by digest
+        id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64
           target: server
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=server-amd64
-          cache-to: type=gha,mode=max,scope=server-amd64
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,"name=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }},${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}",push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-amd64
+          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-amd64,mode=max,image-manifest=true
           provenance: true
           sbom: true
 
@@ -150,32 +145,26 @@ jobs:
           server_type: cax41  # 16 ARM cores (Ampere Altra), 32GB RAM, 320GB SSD
           location: nbg1
           image: ubuntu-24.04
-          pre_runner_script: |
-            apt-get update
-            apt-get install -y ca-certificates curl
-            install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-            chmod a+r /etc/apt/keyrings/docker.asc
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
-            apt-get update
-            apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          pre_runner_script: ${{ env.HCLOUD_PRE_RUNNER_SCRIPT }}
 
   build-arm64:
     name: Build ARM64 (Native)
     needs: create-runner-arm64
     runs-on: ${{ needs.create-runner-arm64.outputs.label }}
     timeout-minutes: 120
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY_GHCR }}
           username: ${{ github.actor }}
@@ -183,36 +172,27 @@ jobs:
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request' && vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY_DOCKER }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
-          tags: |
-            type=raw,value=build-arm64
-          flavor: |
-            latest=false
-
-      - name: Build and push ARM64
-        uses: docker/build-push-action@v6
+      - name: Build and push ARM64 by digest
+        id: build
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/arm64
           target: server
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=server-arm64
-          cache-to: type=gha,mode=max,scope=server-arm64
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,"name=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }},${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}",push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          cache-from: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-arm64
+          cache-to: type=registry,ref=${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:cache-arm64,mode=max,image-manifest=true
           provenance: true
           sbom: true
 
@@ -234,7 +214,7 @@ jobs:
           server_id: ${{ needs.create-runner-arm64.outputs.server_id }}
 
   # =============================================================================
-  # Create Multi-Arch Manifest
+  # Create Multi-Arch Manifest (push-by-digest merge)
   # =============================================================================
   create-manifest:
     name: Create Multi-Arch Manifest
@@ -243,8 +223,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY_GHCR }}
           username: ${{ github.actor }}
@@ -252,45 +235,35 @@ jobs:
 
       - name: Login to Docker Hub
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY_DOCKER }}
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Create version manifest (GHCR)
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION} \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-arm64
-          docker manifest push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:${VERSION}
+      - name: Extract metadata for tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}
+            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Create version manifest (Docker Hub)
-        if: startsWith(github.ref, 'refs/tags/') && vars.DOCKERHUB_USERNAME != ''
+      - name: Create multi-arch manifest and push
         run: |
-          VERSION="${GITHUB_REF#refs/tags/}"
-          docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${VERSION} \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-amd64 \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-arm64
-          docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:${VERSION}
+          # Build the tag arguments for imagetools create
+          TAGS=()
+          while IFS= read -r tag; do
+            [ -n "$tag" ] && TAGS+=("--tag" "$tag")
+          done <<< "${{ steps.meta.outputs.tags }}"
 
-      - name: Create latest manifest (GHCR)
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-        run: |
-          docker manifest create ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-amd64 \
-            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:build-arm64
-          docker manifest push ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}:latest
-
-      - name: Create latest manifest (Docker Hub)
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && vars.DOCKERHUB_USERNAME != ''
-        run: |
-          docker manifest create ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-amd64 \
-            ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:build-arm64
-          docker manifest push ${{ env.REGISTRY_DOCKER }}/${{ env.IMAGE_NAME_DOCKER }}:latest
+          docker buildx imagetools create "${TAGS[@]}" \
+            "${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}@${{ needs.build-amd64.outputs.digest }}" \
+            "${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME_GHCR }}@${{ needs.build-arm64.outputs.digest }}"
 
   # =============================================================================
   # Test Images
@@ -307,13 +280,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY_GHCR }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Test AMD64 server image
+      - name: Test server image
         run: |
           docker run --rm -d --name qgis-test \
             -p 8080:8080 \
@@ -322,7 +295,7 @@ jobs:
           # Wait for server to start
           sleep 15
 
-          # Test WMS capabilities (expect 500 without project file)
+          # Test WMS capabilities (expect ServerException without project file)
           curl -s "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities" | grep -q "ServerException" && echo "QGIS Server responding correctly"
 
           # Test landing page

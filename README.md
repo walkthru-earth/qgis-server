@@ -7,7 +7,7 @@ Production-ready QGIS Server Docker image with multi-architecture support.
 - **Multi-Architecture**: Supports both `linux/amd64` and `linux/arm64`
 - **Multiple Server Modes**: Apache, Lighttpd, or spawn-fcgi
 - **Production Ready**: Healthchecks, non-root user support, read-only filesystem
-- **Latest Stack**: GDAL 3.12.1, Ubuntu Noble
+- **Latest Stack**: GDAL 3.12.2, Ubuntu Noble
 
 ### Architecture Details
 
@@ -151,7 +151,7 @@ make buildx-all
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `QGIS_VERSION` | `final-3_44_7` | QGIS branch/tag to build |
-| `GDAL_VERSION` | `3.12.1` | GDAL base image version |
+| `GDAL_VERSION` | `3.12.2` | GDAL base image version |
 
 ```bash
 # Build specific QGIS version
@@ -175,7 +175,7 @@ make build-server QGIS_VERSION=final-3_44_7
 │  │ Python 3 + PyQt6                                        ││
 │  └─────────────────────────────────────────────────────────┘│
 ├─────────────────────────────────────────────────────────────┤
-│                      Base: GDAL 3.12.1                       │
+│                      Base: GDAL 3.12.2                       │
 │               ghcr.io/osgeo/gdal:ubuntu-small               │
 └─────────────────────────────────────────────────────────────┘
 ```

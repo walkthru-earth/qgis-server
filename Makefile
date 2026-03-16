@@ -2,7 +2,7 @@
 # Walkthru Earth
 
 QGIS_VERSION ?= master
-GDAL_VERSION ?= 3.12.1
+GDAL_VERSION ?= 3.12.2
 DOCKER_TAG ?= latest
 IMAGE_NAME ?= walkthruearth/qgis-server
 

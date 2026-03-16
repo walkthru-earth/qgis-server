@@ -7,7 +7,7 @@ services:
       target: server
       args:
         QGIS_VERSION: ${QGIS_VERSION:-master}
-        GDAL_VERSION: ${GDAL_VERSION:-3.12.1}
+        GDAL_VERSION: ${GDAL_VERSION:-3.12.2}
     ports:
       - "8080:8080"
     environment:

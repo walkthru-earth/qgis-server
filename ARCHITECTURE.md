@@ -43,7 +43,7 @@ graph TB
         QGIS["QGIS 3.44.7<br/>(Qt6)"]
         QT["Qt 6.4"]
         PYTHON["Python 3.12"]
-        GDAL["GDAL 3.12.1"]
+        GDAL["GDAL 3.12.2"]
         UBUNTU["Ubuntu 24.04"]
     end
 
@@ -64,7 +64,7 @@ graph TB
 | QGIS | 3.44.7 | Built from source with Qt6 |
 | Qt | 6.4 | Ubuntu Noble default |
 | Python | 3.12 | With PyQt6 bindings |
-| GDAL | 3.12.1 | Multi-arch base image |
+| GDAL | 3.12.2 | Multi-arch base image |
 | Ubuntu | 24.04 (Noble) | From GDAL base |
 
 ---
@@ -78,7 +78,7 @@ The Dockerfile uses a 6-stage build optimized for caching and minimal image size
 ```mermaid
 flowchart TB
     subgraph "Stage 1: Base"
-        BASE["base<br/>ghcr.io/osgeo/gdal:ubuntu-small-3.12.1<br/>+ Python 3, curl, ca-certificates"]
+        BASE["base<br/>ghcr.io/osgeo/gdal:ubuntu-small-3.12.2<br/>+ Python 3, curl, ca-certificates"]
     end
 
     subgraph "Stage 2-3: Compilation"
@@ -194,7 +194,7 @@ RUN ARCH_DIR=$(dpkg --print-architecture) && \
 The GDAL base image provides verified multi-arch support:
 
 ```bash
-$ docker manifest inspect ghcr.io/osgeo/gdal:ubuntu-small-3.12.1
+$ docker manifest inspect ghcr.io/osgeo/gdal:ubuntu-small-3.12.2
 # Returns: linux/amd64, linux/arm64
 ```
 
@@ -350,18 +350,18 @@ Servers are automatically created before builds and deleted after completion (ev
 | Tag `v1.2.3` | `v1.2.3` (multi-arch manifest) |
 | PR | Build only (not pushed) |
 
-Intermediate architecture-specific tags (`build-amd64`, `build-arm64`) are used during the build process and can be cleaned up manually.
+Per-architecture images are pushed by digest (no intermediate tags), then merged into a single multi-arch manifest using `docker buildx imagetools create`. This preserves provenance and SBOM attestations.
 
 ### Caching
 
-The pipeline uses GitHub Actions cache for Docker layers:
+The pipeline uses registry-based cache for Docker layers (no size limit, unlike GHA's 10 GB cap):
 
 ```yaml
-cache-from: type=gha,scope=server-amd64
-cache-to: type=gha,mode=max,scope=server-amd64
+cache-from: type=registry,ref=ghcr.io/walkthru-earth/qgis-server:cache-amd64
+cache-to: type=registry,ref=ghcr.io/walkthru-earth/qgis-server:cache-amd64,mode=max
 ```
 
-Separate cache scopes per architecture prevent cache pollution.
+Separate cache refs per architecture prevent cache pollution.
 
 ### Required Secrets
 
