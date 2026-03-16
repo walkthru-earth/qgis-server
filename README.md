@@ -83,6 +83,7 @@ curl "http://localhost:8080/ows?SERVICE=WMS&REQUEST=GetCapabilities"
 | `QGIS_PLUGINPATH` | `/var/www/plugins` | Plugin directory |
 | `QGIS_AUTH_DB_DIR_PATH` | - | Auth database directory |
 | `PGSERVICEFILE` | - | PostgreSQL service file |
+| `QT_QPA_PLATFORM` | `offscreen` | Qt platform plugin (required for headless Qt6) |
 
 ## Server Modes
 
