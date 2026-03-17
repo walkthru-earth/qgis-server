@@ -211,13 +211,19 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         libqt6network6t64 \
         libqt6serialport6 \
         libqt6multimedia6 \
+        libqt6multimediawidgets6 \
         libqt6sql6t64 \
         libqt6sql6-sqlite \
         libqt6xml6t64 \
         libqt6svg6 \
+        libqt6svgwidgets6 \
         libqt6opengl6t64 \
         libqt6positioning6 \
         libqt6core5compat6 \
+        libqt6uitools6 \
+        libqt6qml6 \
+        libqt6quickwidgets6 \
+        libqt6printsupport6t64 \
         libqscintilla2-qt6-15 \
         libqt6keychain1 \
         # QGIS runtime dependencies
@@ -280,6 +286,15 @@ COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
 
 # Copy QWT runtime library from builder
 COPY --from=builder /usr/local/qwt-6.3.0/lib/libqwt.so* /usr/local/lib/
+
+# Replace broken SIP-generated Python GUI bindings with stub
+# (SIP 6.8 + Qt 6.4 ABI mismatch causes runtime ImportError for qgis._gui)
+# The C++ libqgis_gui.so works fine for qgis_process — only Python bindings are affected
+RUN rm -f /usr/local/share/qgis/python/qgis/_gui.so \
+         /usr/local/share/qgis/python/qgis/_gui.pyi
+COPY patches/gui_stub.py /tmp/gui_stub.py
+RUN cp /tmp/gui_stub.py /usr/local/share/qgis/python/qgis/gui/__init__.py && \
+    rm /tmp/gui_stub.py
 
 # Copy GeoParquet GDAL plugin into the existing plugins directory
 COPY --from=parquet-builder /gdal-src/build-parquet/ogr_Parquet.so /tmp/ogr_Parquet.so

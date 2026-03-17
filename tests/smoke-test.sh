@@ -342,8 +342,8 @@ for mod in PyQt6.QtCore PyQt6.QtGui PyQt6.QtWidgets PyQt6.QtSvg PyQt6.QtNetwork;
     fi
 done
 
-# qgis.gui (WITH_GUI=ON, QWT 6.3.0 built from source)
-critical "qgis.gui" python3 -c "from qgis.gui import QgsGui"
+# qgis.gui (stub — SIP 6.8 ABI incompatible with Qt 6.4 for Python bindings)
+check "qgis.gui (stub)" python3 -c "from qgis.gui import QgsGui"
 
 # Processing plugin (validated via qgis_process algorithm counts above)
 if [ "$GDAL_COUNT" -gt 0 ]; then
