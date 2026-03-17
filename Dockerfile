@@ -65,7 +65,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         qt6-positioning-dev \
         qt6-svg-dev \
         qt6-serialport-dev \
-        qt6-multimedia-dev \
         qt6-5compat-dev \
         libqt6opengl6-dev \
         libqt6sql6-sqlite \
@@ -102,15 +101,6 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
 # Remove broken PROJ cmake files from GDAL base image
 RUN rm -rf /usr/local/lib/cmake/proj
 
-# Build QWT 6.3.0 for Qt6 (not packaged for Qt6 on Ubuntu Noble)
-WORKDIR /tmp/qwt
-RUN curl -sfL https://sourceforge.net/projects/qwt/files/qwt/6.3.0/qwt-6.3.0.tar.bz2 | tar xj --strip-components=1 && \
-    qmake6 qwt.pro && \
-    make -j$(nproc) && \
-    make install && \
-    ldconfig && \
-    rm -rf /tmp/qwt
-
 # Clone QGIS repository
 WORKDIR /src
 RUN git clone --depth=1 --branch=${QGIS_VERSION} https://github.com/qgis/QGIS.git .
@@ -138,10 +128,8 @@ RUN --mount=type=cache,target=/ccache,id=ccache-${TARGETARCH} \
         -DWITH_SERVER=ON \
         -DWITH_SERVER_LANDINGPAGE_WEBAPP=OFF \
         -DWITH_DESKTOP=OFF \
-        -DWITH_GUI=ON \
+        -DWITH_GUI=OFF \
         -DWITH_3D=OFF \
-        -DQWT_INCLUDE_DIR=/usr/local/qwt-6.3.0/include \
-        -DQWT_LIBRARY=/usr/local/qwt-6.3.0/lib/libqwt.so \
         -DWITH_PDAL=OFF \
         -DWITH_BINDINGS=ON \
         -DBUILD_TESTING=OFF \
@@ -210,20 +198,13 @@ RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
         libqt6widgets6t64 \
         libqt6network6t64 \
         libqt6serialport6 \
-        libqt6multimedia6 \
-        libqt6multimediawidgets6 \
         libqt6sql6t64 \
         libqt6sql6-sqlite \
         libqt6xml6t64 \
         libqt6svg6 \
-        libqt6svgwidgets6 \
         libqt6opengl6t64 \
         libqt6positioning6 \
         libqt6core5compat6 \
-        libqt6uitools6 \
-        libqt6qml6 \
-        libqt6quickwidgets6 \
-        libqt6printsupport6t64 \
         libqscintilla2-qt6-15 \
         libqt6keychain1 \
         # QGIS runtime dependencies
@@ -284,17 +265,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin/
 COPY --from=builder /usr/local/lib /usr/local/lib/
 COPY --from=builder /usr/local/share/qgis /usr/local/share/qgis/
 
-# Copy QWT runtime library from builder
-COPY --from=builder /usr/local/qwt-6.3.0/lib/libqwt.so* /usr/local/lib/
-
-# Replace broken SIP-generated Python GUI bindings with stub
-# (SIP 6.8 + Qt 6.4 ABI mismatch causes runtime ImportError for qgis._gui)
-# The C++ libqgis_gui.so works fine for qgis_process — only Python bindings are affected
-RUN rm -f /usr/local/share/qgis/python/qgis/_gui.so \
-         /usr/local/share/qgis/python/qgis/_gui.pyi
-COPY patches/gui_stub.py /tmp/gui_stub.py
-RUN cp /tmp/gui_stub.py /usr/local/share/qgis/python/qgis/gui/__init__.py && \
-    rm /tmp/gui_stub.py
+# Install stub qgis.gui module (WITH_GUI=OFF — no C++ GUI lib or Python bindings)
+# Allows processing plugin to load for qgis_process list and WMS/WFS serving
+COPY patches/gui_stub.py /usr/local/share/qgis/python/qgis/gui.py
 
 # Copy GeoParquet GDAL plugin into the existing plugins directory
 COPY --from=parquet-builder /gdal-src/build-parquet/ogr_Parquet.so /tmp/ogr_Parquet.so
